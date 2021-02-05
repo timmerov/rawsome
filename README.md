@@ -5,7 +5,7 @@
 reads a raw .CR2 file from a canon rebel ti 7 using libraw.
 does some processing.
 writes a png file.
-groy details are in main.cc.
+gory details are in main.cc.
 
 ## build
 
