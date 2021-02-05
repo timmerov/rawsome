@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2012-2020 tim cotter. All rights reserved.
+Copyright (C) 2012-2021 tim cotter. All rights reserved.
 */
 
 /**
@@ -119,6 +119,7 @@ use joint index.
 where X% of the pixels consume 1-X% of the range.
 **/
 
+#include "cmd_line.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
@@ -193,15 +194,20 @@ public:
     RggbPixel saturated_;
 
     int run(
-        const char *in_filename,
-        const char *out_filename
+        int argc,
+        clo_argv_t argv
     ) {
-        in_filename_ = in_filename;
-        out_filename_ = out_filename;
+        int result = parse(argc, argv);
+        if (result == false) {
+            print_usage();
+            return 1;
+        }
+
         load_raw_image();
         if (is_loaded_ == false) {
             return 1;
         }
+
         copy_raw_to_image();
         determine_black();
         crop_black();
@@ -223,6 +229,47 @@ public:
         scale_to_8bits();
         write_png();
         return 0;
+    }
+
+    int parse(
+        int argc,
+        clo_argv_t argv
+    ) {
+        LOG("parsing command line options...");
+
+        /** set default values for all options. **/
+        in_filename_ = kInputFilename;
+        out_filename_ = kOutputFilename;
+
+        const char *options_short = "i:o:";
+        CmdLineOptions::LongFormat options_long[] = {
+            {'i', "input"},
+            {'o', "output"},
+            {0, nullptr}
+        };
+        CmdLineOptions clo(argc, argv, options_short, options_long);
+        for(;;) {
+            bool success = clo.get();
+            if (success == false) {
+                return !clo.error_;
+            }
+
+            switch (clo.option_) {
+            case 'i':
+                in_filename_ = clo.value_;
+                break;
+            case 'o':
+                out_filename_ = clo.value_;
+                break;
+            }
+        }
+    }
+
+    void print_usage() {
+        LOG("usage:");
+        LOG("rawsome [options]...");
+        LOG("  -i --input  : input filename");
+        LOG("  -o --output : output filename");
     }
 
     void show_special_pixel() {
@@ -912,21 +959,13 @@ public:
 }
 
 int main(
-    int argc, char *argv[]
+    int argc,
+    clo_argv_t argv
 ) noexcept {
-    const char *in_filename = kInputFilename;
-    const char *out_filename = kOutputFilename;
-    if (argc > 1) {
-        in_filename = argv[1];
-    }
-    if (argc > 2) {
-        out_filename = argv[2];
-    }
-
     rs_log::init("rawsome.log");
 
     Rawsome rawsome;
-    int exit_code = rawsome.run(in_filename, out_filename);
+    int exit_code = rawsome.run(argc, argv);
 
     return exit_code;
 }
