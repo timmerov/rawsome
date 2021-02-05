@@ -128,6 +128,8 @@ where X% of the pixels consume 1-X% of the range.
 #include <libraw/libraw.h>
 
 #include <cmath>
+#include <ctime>
+#include <iomanip>
 #include <vector>
 #include <sstream>
 
@@ -208,6 +210,7 @@ public:
             return 1;
         }
 
+        show_camera_parameters();
         copy_raw_to_image();
         determine_black();
         crop_black();
@@ -298,6 +301,32 @@ public:
         raw_image_.raw2image();
         //dump(raw_image_);
         is_loaded_ = true;
+    }
+
+    void show_camera_parameters() {
+        double gamma0 = raw_image_.imgdata.params.gamm[0];
+        double gamma1 = raw_image_.imgdata.params.gamm[1];
+        gamma0 = 1.0 / gamma0;
+
+        double white_balance_r = raw_image_.imgdata.color.cam_mul[0];
+        double white_balance_g = raw_image_.imgdata.color.cam_mul[1];
+        double white_balance_b = raw_image_.imgdata.color.cam_mul[2];
+        white_balance_r /= white_balance_g;
+        white_balance_b /= white_balance_g;
+
+        auto tm = std::localtime(&raw_image_.imgdata.other.timestamp);
+
+        LOG("make         : "<<raw_image_.imgdata.idata.make);
+        LOG("model        : "<<raw_image_.imgdata.idata.model);
+        LOG("lens         : "<<raw_image_.imgdata.lens.Lens);
+        LOG("gamma        : "<<gamma0<<" "<<gamma1);
+        LOG("white balance: R="<<white_balance_r<<" B="<<white_balance_b);
+        LOG("iso          : "<<raw_image_.imgdata.other.iso_speed);
+        LOG("shutter      : "<<raw_image_.imgdata.other.shutter<<"s");
+        LOG("aperture     : f/"<<raw_image_.imgdata.other.aperture);
+        LOG("focal_len    : "<<raw_image_.imgdata.other.focal_len);
+        LOG("timestamp    : "<<std::put_time(tm, "%c %Z"));
+        LOG("temp         : "<<raw_image_.imgdata.other.CameraTemperature);
     }
 
     void copy_raw_to_image() {
