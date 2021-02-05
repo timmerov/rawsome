@@ -199,7 +199,7 @@ public:
         int argc,
         clo_argv_t argv
     ) {
-        int result = parse(argc, argv);
+        bool result = parse(argc, argv);
         if (result == false) {
             print_usage();
             return 1;
@@ -234,7 +234,7 @@ public:
         return 0;
     }
 
-    int parse(
+    bool parse(
         int argc,
         clo_argv_t argv
     ) {
@@ -244,10 +244,11 @@ public:
         in_filename_ = kInputFilename;
         out_filename_ = kOutputFilename;
 
-        const char *options_short = "i:o:";
+        const char *options_short = "?i:o:";
         CmdLineOptions::LongFormat options_long[] = {
             {'i', "input"},
             {'o', "output"},
+            {'?', "help"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -258,6 +259,9 @@ public:
             }
 
             switch (clo.option_) {
+            case '?':
+                /** return a parsing error so usage is shown. **/
+                return false;
             case 'i':
                 in_filename_ = clo.value_;
                 break;
@@ -271,6 +275,7 @@ public:
     void print_usage() {
         LOG("usage:");
         LOG("rawsome [options]...");
+        LOG("  -? --help   : prints usage");
         LOG("  -i --input  : input filename");
         LOG("  -o --output : output filename");
     }
