@@ -22,3 +22,7 @@ build for windows is not supported.
 ## run
 
 $ ./bin/rawsome_d [in.CR2 out.png]
+
+## requirements
+
+cmake g++ libpng libraw
