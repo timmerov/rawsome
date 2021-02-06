@@ -192,6 +192,9 @@ public:
     double user_wb_b_ = 0.0;
     double user_gamma0_ = 0.0;
     double user_gamma1_ = 0.0;
+    int user_noise_ = 0;
+    double user_drama_ = 0.0;
+    int user_window_ = 0;
 
     LibRaw raw_image_;
     bool is_loaded_ = false;
@@ -255,8 +258,11 @@ public:
         user_saturation_ = 0;
         user_gamma0_ = 0.0;
         user_gamma1_ = 0.0;
+        user_noise_ = 0.0;
+        user_drama_ = 0.0;
+        user_window_ = 0;
 
-        const char *options_short = "?i:o:hs:r:b:g:G:";
+        const char *options_short = "?i:o:hs:r:b:g:G:n:d:w:";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'i', "input"},
@@ -266,6 +272,9 @@ public:
             {'b', "wb_b"},
             {'g', "gamma0"},
             {'G', "gamma1"},
+            {'n', "noise"},
+            {'d', "dynamic"},
+            {'w', "window"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -303,6 +312,15 @@ public:
             case 'G':
                 user_gamma1_ = std::atof(clo.value_);
                 break;
+            case 'n':
+                user_noise_ = std::atof(clo.value_);
+                break;
+            case 'd':
+                user_drama_ = std::atof(clo.value_);
+                break;
+            case 'w':
+                user_window_ = std::atoi(clo.value_);
+                break;
             }
         }
     }
@@ -327,6 +345,9 @@ public:
         LOG("  -G --gamma1       : override camera gamma 1.");
         LOG("     must set both -g and -G.");
         LOG("     set to 1 1 to disable gamma correction.");
+        LOG("  -n --noise        : override noise floor when expanding dynamic range.");
+        LOG("  -d --dynamic      : set the dynamic range expansion factor (1.5).");
+        LOG("  -w --window       : set the dynamic range gaussian window (32).");
     }
 
     void show_special_pixel() {
@@ -749,15 +770,33 @@ public:
         /** compute the saturated luminance. **/
         int sat_lum = saturated_.r_*rx + saturated_.g1_*gx + saturated_.g2_*gx + saturated_.b_*bx;
 
+        int window = 32;
+        if (user_window_ > 0) {
+            LOG("using user dynamic range window...");
+            window = user_window_;
+        }
+        LOG("dynamic range window: "<<window);
+
         /** apply gaussian blur to get average lumance. **/
         Plane average(luminance);
-        average.gaussian(32);
+        average.gaussian(window);
 
         /** expand the noise floor a bit. **/
-        int noise = noise_ * 150 / 100;
+        int noise = noise_;
+        if (user_noise_ > 0) {
+            LOG("using user noise floor...");
+            noise = user_noise_;
+        }
+        LOG("noise floor: "<<noise);
+        noise = noise * 150 / 100;
 
         /** dramatically move a pixel from its average luminance. **/
-        const double kDrama = 1.5;
+        double drama = 1.5;
+        if (user_drama_ > 0.0) {
+            LOG("using user dynamic range amplification...");
+            drama = user_drama_;
+        }
+        LOG("dynamic range expansion factor: "<<drama);
 
         for (int y = 0; y < ht; ++y) {
             for (int x = 0; x < wd; ++x) {
@@ -776,7 +815,7 @@ public:
                 double avg_lum = average.get(x, y);
 
                 /** move the colors of this pixel away from the average luminance. **/
-                double target_lum = avg_lum + kDrama*(lum - avg_lum);
+                double target_lum = avg_lum + drama*(lum - avg_lum);
 
                 /** get the components. **/
                 double r = image_.r_.get(x, y);
