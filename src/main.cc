@@ -183,8 +183,16 @@ public:
         }
     }
 
+    /** options **/
     std::string in_filename_;
     std::string out_filename_;
+    bool halfsize_ = false;
+    int user_saturation_ = 0;
+    double user_wb_r_ = 0.0;
+    double user_wb_b_ = 0.0;
+    double user_gamma0_ = 0.0;
+    double user_gamma1_ = 0.0;
+
     LibRaw raw_image_;
     bool is_loaded_ = false;
     Image image_;
@@ -243,12 +251,20 @@ public:
         /** set default values for all options. **/
         in_filename_ = kInputFilename;
         out_filename_ = kOutputFilename;
+        halfsize_ = false;
+        user_saturation_ = 0;
+        user_gamma0_ = 0.0;
+        user_gamma1_ = 0.0;
 
-        const char *options_short = "?i:o:";
+        const char *options_short = "?hi:o:s:r:b:g:G:";
         CmdLineOptions::LongFormat options_long[] = {
-            {'i', "input"},
-            {'o', "output"},
             {'?', "help"},
+            {'h', "halfsize"},
+            {'i', "input"},
+            {'r', "wb_r"},
+            {'b', "wb_b"},
+            {'g', "gamma0"},
+            {'G', "gamma1"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -262,11 +278,29 @@ public:
             case '?':
                 /** return a parsing error so usage is shown. **/
                 return false;
+            case 'h':
+                halfsize_ = true;
+                break;
             case 'i':
                 in_filename_ = clo.value_;
                 break;
             case 'o':
                 out_filename_ = clo.value_;
+                break;
+            case 's':
+                user_saturation_ = std::atoi(clo.value_);
+                break;
+            case 'r':
+                user_wb_r_ = std::atof(clo.value_);
+                break;
+            case 'b':
+                user_wb_b_ = std::atof(clo.value_);
+                break;
+            case 'g':
+                user_gamma0_ = std::atof(clo.value_);
+                break;
+            case 'G':
+                user_gamma1_ = std::atof(clo.value_);
                 break;
             }
         }
@@ -275,9 +309,22 @@ public:
     void print_usage() {
         LOG("usage:");
         LOG("rawsome [options]...");
-        LOG("  -? --help   : prints usage");
-        LOG("  -i --input  : input filename");
-        LOG("  -o --output : output filename");
+        LOG("  -? --help         : prints usage");
+        LOG("  -h --halfsize     : disables demosaicing");
+        LOG("  -i --input  file  : input filename");
+        LOG("  -o --output file  : output filename");
+        LOG("  -s --saturation # : override saturation level");
+        LOG("     if any sample is saturated then pixel is considered saturated.");
+        LOG("     saturated pixels are converted to white in the pipeline.");
+        LOG("     set to a large value (~16000) to disable the special handling.");
+        LOG("     use smaller values (< ~8000) to brighten the image.");
+        LOG("  -r --wb_r         : override camera white balance for red.");
+        LOG("  -b --wb_b         : override camera white balance for blue.");
+        LOG("     must set both -r and -b.");
+        LOG("  -g --gamma0       : override camera gamma 0.");
+        LOG("  -G --gamma1       : override camera gamma 1.");
+        LOG("     must set both -g and -G.");
+        LOG("     set to 1 1 to disable gamma correction.");
     }
 
     void show_special_pixel() {
@@ -443,13 +490,23 @@ public:
 
     void determine_saturation() {
         LOG("determining saturation...");
-        /**
-        the camera sensor saturates at less than the maximum value.
-        **/
-        saturation_.r_ = determine_saturation(image_.r_);
-        saturation_.g1_ = determine_saturation(image_.g1_);
-        saturation_.g2_ = determine_saturation(image_.g2_);
-        saturation_.b_ = determine_saturation(image_.b_);
+
+        if (user_saturation_ > 0) {
+            LOG("using user saturation...");
+            saturation_.r_ = user_saturation_;
+            saturation_.g1_ = user_saturation_;
+            saturation_.g2_ = user_saturation_;
+            saturation_.b_ = user_saturation_;
+        } else {
+            /**
+            the camera sensor saturates at less than the maximum value.
+            **/
+            saturation_.r_ = determine_saturation(image_.r_);
+            saturation_.g1_ = determine_saturation(image_.g1_);
+            saturation_.g2_ = determine_saturation(image_.g2_);
+            saturation_.b_ = determine_saturation(image_.b_);
+        }
+
         LOG("saturation is: "<<saturation_.r_<<" "<<saturation_.g1_<<" "<<saturation_.g2_<<" "<<saturation_.b_);
 
         /** the fully saturated values will be modified. **/
@@ -573,12 +630,20 @@ public:
         note order permutation.
         **/
         Balance cam_mul;
-        auto& raw_cam_mul = raw_image_.imgdata.rawdata.color.cam_mul;
-        cam_mul.r_ = raw_cam_mul[0];
-        cam_mul.g1_ = raw_cam_mul[1];
-        cam_mul.g2_ = raw_cam_mul[3];
-        cam_mul.b_ = raw_cam_mul[2];
-        //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
+        if (user_wb_r_ > 0.0 && user_wb_b_ >= 0.0) {
+            LOG("using user white balance...");
+            cam_mul.r_ = user_wb_r_;
+            cam_mul.g1_ = 1.0;
+            cam_mul.g2_ = 1.0;
+            cam_mul.b_ = user_wb_b_;
+        } else {
+            auto& raw_cam_mul = raw_image_.imgdata.rawdata.color.cam_mul;
+            cam_mul.r_ = raw_cam_mul[0];
+            cam_mul.g1_ = raw_cam_mul[1];
+            cam_mul.g2_ = raw_cam_mul[3];
+            cam_mul.b_ = raw_cam_mul[2];
+            //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
+        }
 
         /** find the smallest multiplier. **/
         double f = std::min(cam_mul.r_, cam_mul.g1_);
@@ -734,6 +799,12 @@ public:
     }
 
     void interpolate() {
+        /** halfsize option disables demosaicing. **/
+        if (halfsize_) {
+            LOG("interpolation disabled by --halfsize option.");
+            return;
+        }
+
         /**
         how do we keep saturated pixels from bleeding into other pixels
         and becoming not-saturated hot pink?
@@ -871,9 +942,28 @@ public:
     }
 
     void apply_gamma() {
-        LOG("applying gamma...");
-        double pwr = raw_image_.imgdata.params.gamm[0];
-        double ts = raw_image_.imgdata.params.gamm[1];
+        LOG("applying gamma correction...");
+
+        double pwr;
+        double ts;
+        if (user_gamma0_ > 0.0 && user_gamma1_ > 0.0) {
+            LOG("using user gamma correction...");
+            pwr =  1.0 / user_gamma0_;
+            ts = user_gamma1_;
+        } else {
+            /** using camera's gamma. **/
+            pwr = raw_image_.imgdata.params.gamm[0];
+            ts = raw_image_.imgdata.params.gamm[1];
+        }
+
+        if (pwr == 1.0 && ts == 1.0) {
+            LOG("gamma correction is disabled.");
+            return;
+        }
+
+        double ipwr = 1.0 / pwr;
+        LOG("gamma correction: "<<ipwr<<" "<<ts);
+
         int white = 0x10000;
         gamma_curve(pwr, ts, white);
 
