@@ -256,11 +256,12 @@ public:
         user_gamma0_ = 0.0;
         user_gamma1_ = 0.0;
 
-        const char *options_short = "?hi:o:s:r:b:g:G:";
+        const char *options_short = "?i:o:hs:r:b:g:G:";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
-            {'h', "halfsize"},
             {'i', "input"},
+            {'o', "output"},
+            {'h', "halfsize"},
             {'r', "wb_r"},
             {'b', "wb_b"},
             {'g', "gamma0"},
@@ -310,13 +311,14 @@ public:
         LOG("usage:");
         LOG("rawsome [options]...");
         LOG("  -? --help         : prints usage");
-        LOG("  -h --halfsize     : disables demosaicing");
         LOG("  -i --input  file  : input filename");
         LOG("  -o --output file  : output filename");
+        LOG("  -h --halfsize     : disables demosaicing");
         LOG("  -s --saturation # : override saturation level");
-        LOG("     if any sample is saturated then pixel is considered saturated.");
+        LOG("     if any sample is saturated then the entire pixel is considered saturated.");
         LOG("     saturated pixels are converted to white in the pipeline.");
-        LOG("     set to a large value (~16000) to disable the special handling.");
+        LOG("     set to a large value (~16000) to disable special handling.");
+        LOG("     caution: you may get hot pink in your images.");
         LOG("     use smaller values (< ~8000) to brighten the image.");
         LOG("  -r --wb_r         : override camera white balance for red.");
         LOG("  -b --wb_b         : override camera white balance for blue.");
