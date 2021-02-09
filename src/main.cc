@@ -256,25 +256,25 @@ public:
         out_filename_ = kOutputFilename;
         halfsize_ = false;
         user_saturation_ = 0;
+        user_wb_r_ = 0.0;
+        user_wb_b_ = 0.0;
         user_gamma0_ = 0.0;
         user_gamma1_ = 0.0;
         user_noise_ = 0.0;
         user_drama_ = 0.0;
         user_window_ = 0;
 
-        const char *options_short = "?i:o:hs:r:b:g:G:n:d:w:";
+        const char *options_short = "?i:o:hs:w:g:n:d:W:";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'i', "input"},
             {'o', "output"},
             {'h', "halfsize"},
-            {'r', "wb_r"},
-            {'b', "wb_b"},
-            {'g', "gamma0"},
-            {'G', "gamma1"},
+            {'w', "white-balance"},
+            {'g', "gamma"},
             {'n', "noise"},
             {'d', "dynamic"},
-            {'w', "window"},
+            {'W', "window"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -300,25 +300,25 @@ public:
             case 's':
                 user_saturation_ = std::atoi(clo.value_);
                 break;
-            case 'r':
-                user_wb_r_ = std::atof(clo.value_);
+            case 'w': {
+                bool good = comma_separated_inputs(clo.value_, user_wb_r_, user_wb_b_);
+                if (good == false) {
+                    return false;
+                }
                 break;
-            case 'b':
-                user_wb_b_ = std::atof(clo.value_);
+            } case 'g': {
+                bool good = comma_separated_inputs(clo.value_, user_gamma0_, user_gamma1_);
+                if (good == false) {
+                    return false;
+                }
                 break;
-            case 'g':
-                user_gamma0_ = std::atof(clo.value_);
-                break;
-            case 'G':
-                user_gamma1_ = std::atof(clo.value_);
-                break;
-            case 'n':
+            } case 'n':
                 user_noise_ = std::atof(clo.value_);
                 break;
             case 'd':
                 user_drama_ = std::atof(clo.value_);
                 break;
-            case 'w':
+            case 'W':
                 user_window_ = std::atoi(clo.value_);
                 break;
             }
@@ -328,26 +328,57 @@ public:
     void print_usage() {
         LOG("usage:");
         LOG("rawsome [options]...");
-        LOG("  -? --help         : prints usage");
-        LOG("  -i --input  file  : input filename");
-        LOG("  -o --output file  : output filename");
-        LOG("  -h --halfsize     : disables demosaicing");
-        LOG("  -s --saturation # : override saturation level");
+        LOG("  -? --help           : prints usage");
+        LOG("  -i --input file     : input filename");
+        LOG("  -o --output file    : output filename");
+        LOG("  -h --halfsize       : disables demosaicing");
+        LOG("  -s --saturation saturation :");
+        LOG("     override saturation level.");
         LOG("     if any sample is saturated then the entire pixel is considered saturated.");
         LOG("     saturated pixels are converted to white in the pipeline.");
         LOG("     set to a large value (~16000) to disable special handling.");
         LOG("     caution: you may get hot pink in your images.");
         LOG("     use smaller values (< ~8000) to brighten the image.");
-        LOG("  -r --wb_r         : override camera white balance for red.");
-        LOG("  -b --wb_b         : override camera white balance for blue.");
-        LOG("     must set both -r and -b.");
-        LOG("  -g --gamma0       : override camera gamma 0.");
-        LOG("  -G --gamma1       : override camera gamma 1.");
-        LOG("     must set both -g and -G.");
+        LOG("  -w --white-balance red,blue :");
+        LOG("     override camera white balance.");
+        LOG("  -g --gamma g0,g1     : override camera gamma. default 2.22,4.5");
         LOG("     set to 1 1 to disable gamma correction.");
-        LOG("  -n --noise        : override noise floor when expanding dynamic range.");
-        LOG("  -d --dynamic      : set the dynamic range expansion factor (1.5).");
-        LOG("  -w --window       : set the dynamic range gaussian window (32).");
+        LOG("  -n --noise noise     : override noise floor when expanding dynamic range.");
+        LOG("  -d --dynamic dynamic : sets the dynamic range expansion factor. default 1.5");
+        LOG("  -w --window window   : set the dynamic range gaussian window. default 32");
+    }
+
+    bool comma_separated_inputs(
+        const char *s,
+        double &x,
+        double &y
+    ) {
+        /**
+        wtf can c++ not just do this:
+        stringstream ss(s);
+        ss>>x>>",">>y;
+        return ss.good();
+        ?
+        sigh.
+        **/
+        std::stringstream ss(s);
+        ss >> x;
+        if (ss.fail()) {
+            return false;
+        }
+        char ch = 0;
+        ss >> ch;
+        if (ss.fail()) {
+            return false;
+        }
+        if (ch != ',') {
+            return false;
+        }
+        ss >> y;
+        if (ss.fail()) {
+            return false;
+        }
+        return true;
     }
 
     void show_special_pixel() {
