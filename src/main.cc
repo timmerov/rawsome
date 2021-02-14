@@ -181,6 +181,9 @@ public:
     int user_noise_ = 0;
     double user_drama_ = 0.0;
     int user_window_ = 0;
+    double user_auto_brightness_ = -1.0;
+    double user_linear_brightness_ = 0.0;
+    double auto_brightness_ = 0.0;
 
     LibRaw raw_image_;
     bool is_loaded_ = false;
@@ -191,6 +194,7 @@ public:
     RggbPixel saturation_;
     std::vector<int> histogram_;
     RggbPixel saturated_;
+    Plane luminance_;
 
     int run(
         int argc,
@@ -222,6 +226,7 @@ public:
         interpolate();
         combine_greens();
         show_special_pixel();
+        determine_auto_brightness();
         convert_to_srgb();
         show_special_pixel();
         apply_gamma();
@@ -249,18 +254,23 @@ public:
         user_noise_ = 0.0;
         user_drama_ = 0.0;
         user_window_ = 0;
+        user_auto_brightness_ = -1.0;
+        user_linear_brightness_ = 0.0;
 
-        const char *options_short = "?i:o:hs:w:g:n:d:W:";
+        const char *options_short = "?i:o:s:w:n:d:W:ha:b:g:";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'i', "input"},
             {'o', "output"},
-            {'h', "halfsize"},
+            {'s', "saturation"},
             {'w', "white-balance"},
-            {'g', "gamma"},
             {'n', "noise"},
             {'d', "dynamic"},
             {'W', "window"},
+            {'h', "halfsize"},
+            {'a', "auto-brightness"},
+            {'b', "linear-brightness"},
+            {'g', "gamma"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -277,9 +287,6 @@ public:
             case '?':
                 /** return a parsing error so usage is shown. **/
                 return false;
-            case 'h':
-                halfsize_ = true;
-                break;
             case 'i':
                 in_filename_ = clo.value_;
                 break;
@@ -295,12 +302,6 @@ public:
                     return false;
                 }
                 break;
-            } case 'g': {
-                bool good = comma_separated_inputs(clo.value_, user_gamma0_, user_gamma1_);
-                if (good == false) {
-                    return false;
-                }
-                break;
             } case 'n':
                 user_noise_ = std::atof(clo.value_);
                 break;
@@ -310,6 +311,22 @@ public:
             case 'W':
                 user_window_ = std::atoi(clo.value_);
                 break;
+            case 'h':
+                halfsize_ = true;
+                break;
+            case 'a':
+                user_auto_brightness_ = std::atof(clo.value_);
+                break;
+            case 'b':
+                user_linear_brightness_ = std::atof(clo.value_);
+                break;
+            case 'g': {
+                bool good = comma_separated_inputs(clo.value_, user_gamma0_, user_gamma1_);
+                if (good == false) {
+                    return false;
+                }
+                break;
+            }
             }
         }
 
@@ -324,24 +341,39 @@ public:
     void print_usage() {
         LOG("usage:");
         LOG("rawsome [options]...");
-        LOG("  -? --help           : prints usage");
-        LOG("  -i --input file     : input filename");
-        LOG("  -o --output file    : output filename");
-        LOG("  -h --halfsize       : disables demosaicing");
+        LOG("  -? --help        : prints usage.");
+        LOG("  -i --input file  : input filename - required.");
+        LOG("  -o --output file : output filename.");
+        LOG("     derived from input filename if not specified.");
+        LOG("     the extension is replaced with \".png\".");
+        LOG("");
+        LOG("these operations are applied in this order:");
+        LOG("");
         LOG("  -s --saturation saturation :");
         LOG("     override saturation level.");
         LOG("     if any sample is saturated then the entire pixel is considered saturated.");
         LOG("     saturated pixels are converted to white in the pipeline.");
         LOG("     set to a large value (~16000) to disable special handling.");
         LOG("     caution: you may get hot pink in your images.");
-        LOG("     use smaller values (< ~8000) to brighten the image.");
-        LOG("  -w --white-balance red,blue :");
-        LOG("     override camera white balance.");
-        LOG("  -g --gamma g0,g1     : override camera gamma. default 2.22,4.5");
-        LOG("     set to 1 1 to disable gamma correction.");
+        LOG("     use smaller values (< ~8000) to brighten the raw samples.");
+        LOG("");
+        LOG("  -w --white-balance red,blue : override camera white balance.");
+        LOG("");
         LOG("  -n --noise noise     : override noise floor when expanding dynamic range.");
         LOG("  -d --dynamic dynamic : sets the dynamic range expansion factor. default 1.5");
-        LOG("  -w --window window   : set the dynamic range gaussian window. default 32");
+        LOG("  -W --window window   : set the dynamic range gaussian window. default 32");
+        LOG("");
+        LOG("  -h --halfsize         : disables demosaicing.");
+        LOG("     the bayer block of RGGB is treated as a single pixel.");
+        LOG("");
+        LOG("  -a --auto-brightness fraction:");
+        LOG("     this fraction of the brightest pixels will be forced to full white.");
+        LOG("     set to -1 to disable. default 0.");
+        LOG("  -b --linear-brightness brightness:");
+        LOG("     uniformly scale pixel values. default 1.0.");
+        LOG("");
+        LOG("  -g --gamma g0,g1      : override camera gamma. default 2.22,4.5");
+        LOG("     set to 1 1 to disable gamma correction.");
     }
 
     bool comma_separated_inputs(
@@ -826,8 +858,7 @@ public:
         /** compute luminance for all pixels. **/
         int wd = image_.r_.width_;
         int ht = image_.r_.height_;
-        Plane luminance;
-        luminance.init(wd, ht);
+        luminance_.init(wd, ht);
         int sz = wd * ht;
         for (int i = 0; i < sz; ++i) {
             int r = image_.r_.samples_[i];
@@ -835,7 +866,7 @@ public:
             int g2 = image_.g2_.samples_[i];
             int b = image_.b_.samples_[i];
             int lum = r*rx + g1*gx + g2*gx + b*bx;
-            luminance.samples_[i] = lum;
+            luminance_.samples_[i] = lum;
         }
 
         /** compute the saturated luminance. **/
@@ -849,7 +880,7 @@ public:
         LOG("dynamic range window: "<<window);
 
         /** apply gaussian blur to get average lumance. **/
-        Plane average(luminance);
+        Plane average(luminance_);
         average.gaussian(window);
 
         /** expand the noise floor a bit. **/
@@ -871,7 +902,7 @@ public:
 
         for (int y = 0; y < ht; ++y) {
             for (int x = 0; x < wd; ++x) {
-                int lum = luminance.get(x, y);
+                int lum = luminance_.get(x, y);
 
                 /** ignore pixels below the noise floor. **/
                 if (lum <= noise) {
@@ -998,6 +1029,46 @@ public:
         //LOG("saturated="<<saturated_.r_<<" "<<saturated_.g1_<<" "<<saturated_.g2_<<" "<<saturated_.b_);
     }
 
+    void determine_auto_brightness() {
+        auto_brightness_ = 0.0;
+        if (user_auto_brightness_ < 0.0) {
+            return;
+        }
+
+        std::vector<int> histogram;
+        histogram.resize(65536, 0);
+
+        int wd = luminance_.width_;
+        int ht = luminance_.height_;
+        for (int y = 0; y < ht; ++y) {
+            for (int x = 0; x < wd; ++x) {
+                int lum = luminance_.get(x, y);
+                int idx = pin_to_16bits(lum);
+                ++histogram[idx];
+            }
+        }
+
+        for (int i = 65535; i >= 0; --i) {
+            if (histogram[i] > 0) {
+                double brightest = double(i) / 65535.0;
+                LOG("brightest pixel: "<<brightest);
+                break;
+            }
+        }
+
+        int sz = wd * ht;
+        int target = sz * user_auto_brightness_;
+        int count = 0;
+        for (int i = 65535; i >= 0; --i) {
+            count += histogram[i];
+            if (count >= target) {
+                auto_brightness_ = 65535.0 / double(i);
+                break;
+            }
+        }
+
+    }
+
     void convert_to_srgb() {
         LOG("converting to sRGB...");
         /**
@@ -1006,11 +1077,26 @@ public:
         the matrix is hard-coded.
         dcraw derives it roundaboutedly.
         **/
-        static double mat[3][3] = {
+        double mat[3][3] = {
             {+1.901824, -0.972035, +0.070211},
             {-0.229410, +1.659384, -0.429974},
             {+0.042001, -0.519143, +1.477141}
         };
+
+        /** account for user specified auto or linear brightness. **/
+        double brightness = 1.0;
+        if (user_auto_brightness_ >= 0.0) {
+            LOG("using user auto brightness: "<<user_auto_brightness_<<" "<<auto_brightness_);
+            brightness = auto_brightness_;
+        } else if (user_linear_brightness_ > 0.0) {
+            LOG("using user linear brightness: "<<user_linear_brightness_);
+            brightness = user_linear_brightness_;
+        }
+        for (int k = 0; k < 3; ++k) {
+            for (int i = 0; i < 3; ++i) {
+                mat[i][k] *= brightness;
+            }
+        }
 
         int sz = image_.r_.width_ * image_.r_.height_;
         for (int i = 0; i < sz; ++i) {
@@ -1133,7 +1219,7 @@ public:
         int sz = plane.width_ * plane.height_;
         for (int i = 0; i < sz; ++i) {
             int c = plane.samples_[i];
-            c = pin_to_32bits(c);
+            c = pin_to_16bits(c);
             c = gamma_curve_[c];
             plane.samples_[i] = c;
         }
@@ -1179,7 +1265,7 @@ public:
         return x;
     }
 
-    int pin_to_32bits(
+    int pin_to_16bits(
         int x
     ) {
         if (x < 0) {
