@@ -135,26 +135,12 @@ where X% of the pixels consume 1-X% of the range.
 
 namespace {
 
-//const char *kInputFilename = "/home/timmer/Pictures/2020-05-12/moon/IMG_0393.CR2";
-//const char *kOutputFilename = "moon.png";
-
-//const char *kInputFilename = "/home/timmer/Pictures/2021-01-29/red.CR2";
-//const char *kOutputFilename = "/home/timmer/Pictures/2021-01-29/red.png";
-
-//const char *kInputFilename = "/home/timmer/Pictures/2021-01-29/green.CR2";
-//const char *kOutputFilename = "/home/timmer/Pictures/2021-01-29/green.png";
-
-//const char *kInputFilename = "/home/timmer/Pictures/2021-01-29/blue.CR2";
-//const char *kOutputFilename = "/home/timmer/Pictures/2021-01-29/blue.png";
-
-const char *kInputFilename = "/home/timmer/Pictures/2021-01-29/santa.CR2";
-const char *kOutputFilename = "/home/timmer/Pictures/2021-01-29/santa.png";
-
-//const char *kInputFilename = "/home/timmer/Pictures/2020-07-11/IMG_0480.CR2";
-//const char *kOutputFilename = "comet1.png";
-
-//const char *kInputFilename = "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2";
-//const char *kOutputFilename = "comet2.png";
+/**
+moon:   "/home/timmer/Pictures/2020-05-12/moon/IMG_0393.CR2"
+santa:  "/home/timmer/Pictures/2021-01-29/santa.CR2"
+comet1: "/home/timmer/Pictures/2020-07-11/IMG_0480.CR2"
+comet2: "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2"
+***/
 
 const int kFullySaturated = (1<<30)-1;
 
@@ -252,8 +238,8 @@ public:
         LOG("parsing command line options...");
 
         /** set default values for all options. **/
-        in_filename_ = kInputFilename;
-        out_filename_ = kOutputFilename;
+        in_filename_.clear();
+        out_filename_.clear();
         halfsize_ = false;
         user_saturation_ = 0;
         user_wb_r_ = 0.0;
@@ -281,7 +267,10 @@ public:
         for(;;) {
             bool success = clo.get();
             if (success == false) {
-                return !clo.error_;
+                if (clo.error_) {
+                    return false;
+                }
+                break;
             }
 
             switch (clo.option_) {
@@ -323,6 +312,13 @@ public:
                 break;
             }
         }
+
+        if (in_filename_.empty()) {
+            return false;
+        }
+        set_out_filename();
+
+        return true;
     }
 
     void print_usage() {
@@ -379,6 +375,50 @@ public:
             return false;
         }
         return true;
+    }
+
+    void set_out_filename() {
+        /**
+        create an output filename from the input filename.
+        unlesse the user supplied one.
+        **/
+        if (out_filename_.empty() == false) {
+            return;
+        }
+
+        /** split the path from the filename plus extension. **/
+        std::string path;
+        std::string fn_ext;
+        auto len = in_filename_.size();
+        auto found = in_filename_.find_last_of("/");
+        if (found >= len) {
+            path = "";
+            fn_ext = in_filename_;
+        } else {
+            path = in_filename_.substr(0, found);
+            fn_ext = in_filename_.substr(found + 1);
+        }
+
+        /** split the filename from the extension. **/
+        std::string fn;
+        std::string ext;
+        len = fn_ext.size();
+        found = fn_ext.find_last_of(".");
+        if (found >= len) {
+            fn = fn_ext;
+            ext = "";
+        } else {
+            fn = fn_ext.substr(0, found);
+            ext = fn_ext.substr(found + 1);
+        }
+
+        /** replace the extension in the output filename. **/
+        out_filename_ = path;
+        if (out_filename_.empty() == false) {
+            out_filename_ += "/";
+        }
+        out_filename_ += fn;
+        out_filename_ += ".png";
     }
 
     void show_special_pixel() {
