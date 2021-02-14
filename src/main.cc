@@ -1030,10 +1030,7 @@ public:
     }
 
     void determine_auto_brightness() {
-        auto_brightness_ = 0.0;
-        if (user_auto_brightness_ < 0.0) {
-            return;
-        }
+        LOG("determining auto brightness...");
 
         std::vector<int> histogram;
         histogram.resize(65536, 0);
@@ -1051,9 +1048,16 @@ public:
         for (int i = 65535; i >= 0; --i) {
             if (histogram[i] > 0) {
                 double brightest = double(i) / 65535.0;
-                LOG("brightest pixel: "<<brightest);
+                double brightness = 1.0 / brightest;
+                LOG("current brightness: "<<brightest);
+                LOG("proper brightness: "<<brightness);
                 break;
             }
+        }
+
+        auto_brightness_ = 0.0;
+        if (user_auto_brightness_ < 0.0) {
+            return;
         }
 
         int sz = wd * ht;
