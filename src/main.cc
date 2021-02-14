@@ -119,10 +119,10 @@ use joint index.
 where X% of the pixels consume 1-X% of the range.
 **/
 
-#include "cmd_line.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
+#include "options.h"
 #include "rs_png.h"
 
 #include <libraw/libraw.h>
@@ -169,22 +169,7 @@ public:
         }
     }
 
-    /** options **/
-    std::string in_filename_;
-    std::string out_filename_;
-    bool halfsize_ = false;
-    int user_saturation_ = 0;
-    double user_wb_r_ = 0.0;
-    double user_wb_b_ = 0.0;
-    double user_gamma0_ = 0.0;
-    double user_gamma1_ = 0.0;
-    int user_noise_ = 0;
-    double user_drama_ = 0.0;
-    int user_window_ = 0;
-    double user_auto_brightness_ = -1.0;
-    double user_linear_brightness_ = 0.0;
-    double auto_brightness_ = 0.0;
-
+    Options opt_;
     LibRaw raw_image_;
     bool is_loaded_ = false;
     Image image_;
@@ -195,14 +180,15 @@ public:
     std::vector<int> histogram_;
     RggbPixel saturated_;
     Plane luminance_;
+    double auto_brightness_ = 0.0;
 
     int run(
         int argc,
         clo_argv_t argv
     ) {
-        bool result = parse(argc, argv);
+        bool result = opt_.parse(argc, argv);
         if (result == false) {
-            print_usage();
+            Options::print_usage();
             return 1;
         }
 
@@ -236,223 +222,6 @@ public:
         return 0;
     }
 
-    bool parse(
-        int argc,
-        clo_argv_t argv
-    ) {
-        LOG("parsing command line options...");
-
-        /** set default values for all options. **/
-        in_filename_.clear();
-        out_filename_.clear();
-        halfsize_ = false;
-        user_saturation_ = 0;
-        user_wb_r_ = 0.0;
-        user_wb_b_ = 0.0;
-        user_gamma0_ = 0.0;
-        user_gamma1_ = 0.0;
-        user_noise_ = 0.0;
-        user_drama_ = 0.0;
-        user_window_ = 0;
-        user_auto_brightness_ = -1.0;
-        user_linear_brightness_ = 0.0;
-
-        const char *options_short = "?i:o:s:w:n:d:W:ha:b:g:";
-        CmdLineOptions::LongFormat options_long[] = {
-            {'?', "help"},
-            {'i', "input"},
-            {'o', "output"},
-            {'s', "saturation"},
-            {'w', "white-balance"},
-            {'n', "noise"},
-            {'d', "dynamic"},
-            {'W', "window"},
-            {'h', "halfsize"},
-            {'a', "auto-brightness"},
-            {'b', "linear-brightness"},
-            {'g', "gamma"},
-            {0, nullptr}
-        };
-        CmdLineOptions clo(argc, argv, options_short, options_long);
-        for(;;) {
-            bool success = clo.get();
-            if (success == false) {
-                if (clo.error_) {
-                    return false;
-                }
-                break;
-            }
-
-            switch (clo.option_) {
-            case '?':
-                /** return a parsing error so usage is shown. **/
-                return false;
-            case 'i':
-                in_filename_ = clo.value_;
-                break;
-            case 'o':
-                out_filename_ = clo.value_;
-                break;
-            case 's':
-                user_saturation_ = std::atoi(clo.value_);
-                break;
-            case 'w': {
-                bool good = comma_separated_inputs(clo.value_, user_wb_r_, user_wb_b_);
-                if (good == false) {
-                    return false;
-                }
-                break;
-            } case 'n':
-                user_noise_ = std::atof(clo.value_);
-                break;
-            case 'd':
-                user_drama_ = std::atof(clo.value_);
-                break;
-            case 'W':
-                user_window_ = std::atoi(clo.value_);
-                break;
-            case 'h':
-                halfsize_ = true;
-                break;
-            case 'a':
-                user_auto_brightness_ = std::atof(clo.value_);
-                break;
-            case 'b':
-                user_linear_brightness_ = std::atof(clo.value_);
-                break;
-            case 'g': {
-                bool good = comma_separated_inputs(clo.value_, user_gamma0_, user_gamma1_);
-                if (good == false) {
-                    return false;
-                }
-                break;
-            }
-            }
-        }
-
-        if (in_filename_.empty()) {
-            return false;
-        }
-        set_out_filename();
-
-        return true;
-    }
-
-    void print_usage() {
-        LOG("usage:");
-        LOG("rawsome [options]...");
-        LOG("  -? --help        : prints usage.");
-        LOG("  -i --input file  : input filename - required.");
-        LOG("  -o --output file : output filename.");
-        LOG("     derived from input filename if not specified.");
-        LOG("     the extension is replaced with \".png\".");
-        LOG("");
-        LOG("these operations are applied in this order:");
-        LOG("");
-        LOG("  -s --saturation saturation :");
-        LOG("     override saturation level.");
-        LOG("     if any sample is saturated then the entire pixel is considered saturated.");
-        LOG("     saturated pixels are converted to white in the pipeline.");
-        LOG("     set to a large value (~16000) to disable special handling.");
-        LOG("     caution: you may get hot pink in your images.");
-        LOG("     use smaller values (< ~8000) to brighten the raw samples.");
-        LOG("");
-        LOG("  -w --white-balance red,blue : override camera white balance.");
-        LOG("");
-        LOG("  -n --noise noise    : override noise floor when expanding dynamic range.");
-        LOG("  -d --dynamic dynamic: sets the dynamic range expansion factor. default 1.5");
-        LOG("  -W --window window  : set the dynamic range gaussian window. default 32");
-        LOG("");
-        LOG("  -h --halfsize       : disables demosaicing.");
-        LOG("     the bayer block of RGGB is treated as a single pixel.");
-        LOG("");
-        LOG("  -a --auto-brightness fraction:");
-        LOG("     this fraction of the brightest pixels will be forced to full white.");
-        LOG("     set to -1 to disable. default 0.");
-        LOG("  -b --linear-brightness brightness:");
-        LOG("     uniformly scale pixel values. default 1.0.");
-        LOG("");
-        LOG("  -g --gamma g0,g1    : override camera gamma. default 2.22,4.5");
-        LOG("     set to 1 1 to disable gamma correction.");
-    }
-
-    bool comma_separated_inputs(
-        const char *s,
-        double &x,
-        double &y
-    ) {
-        /**
-        wtf can c++ not just do this:
-        stringstream ss(s);
-        ss>>x>>",">>y;
-        return ss.good();
-        ?
-        sigh.
-        **/
-        std::stringstream ss(s);
-        ss >> x;
-        if (ss.fail()) {
-            return false;
-        }
-        char ch = 0;
-        ss >> ch;
-        if (ss.fail()) {
-            return false;
-        }
-        if (ch != ',') {
-            return false;
-        }
-        ss >> y;
-        if (ss.fail()) {
-            return false;
-        }
-        return true;
-    }
-
-    void set_out_filename() {
-        /**
-        create an output filename from the input filename.
-        unlesse the user supplied one.
-        **/
-        if (out_filename_.empty() == false) {
-            return;
-        }
-
-        /** split the path from the filename plus extension. **/
-        std::string path;
-        std::string fn_ext;
-        auto len = in_filename_.size();
-        auto found = in_filename_.find_last_of("/");
-        if (found >= len) {
-            path = "";
-            fn_ext = in_filename_;
-        } else {
-            path = in_filename_.substr(0, found);
-            fn_ext = in_filename_.substr(found + 1);
-        }
-
-        /** split the filename from the extension. **/
-        std::string fn;
-        std::string ext;
-        len = fn_ext.size();
-        found = fn_ext.find_last_of(".");
-        if (found >= len) {
-            fn = fn_ext;
-            ext = "";
-        } else {
-            fn = fn_ext.substr(0, found);
-            ext = fn_ext.substr(found + 1);
-        }
-
-        /** replace the extension in the output filename. **/
-        out_filename_ = path;
-        if (out_filename_.empty() == false) {
-            out_filename_ += "/";
-        }
-        out_filename_ += fn;
-        out_filename_ += ".png";
-    }
-
     void show_special_pixel() {
         /*int x = 2346;
         int y = 1186;
@@ -464,15 +233,15 @@ public:
     }
 
     void load_raw_image() {
-        LOG("loading raw image from: \""<<in_filename_<<"\"...");
+        LOG("loading raw image from: \""<<opt_.in_filename_<<"\"...");
         is_loaded_ = false;
-        raw_image_.open_file(in_filename_.c_str());
+        raw_image_.open_file(opt_.in_filename_.c_str());
         int raw_wd = raw_image_.imgdata.sizes.width;
         int raw_ht = raw_image_.imgdata.sizes.height;
         LOG("raw_wd="<<raw_wd);
         LOG("raw_ht="<<raw_ht);
         if (raw_wd <= 0 || raw_ht <= 0) {
-            LOG("File not opened: "<<in_filename_);
+            LOG("File not opened: "<<opt_.in_filename_);
             return;
         }
         raw_image_.unpack();
@@ -617,12 +386,12 @@ public:
     void determine_saturation() {
         LOG("determining saturation...");
 
-        if (user_saturation_ > 0) {
+        if (opt_.saturation_ > 0) {
             LOG("using user saturation...");
-            saturation_.r_ = user_saturation_;
-            saturation_.g1_ = user_saturation_;
-            saturation_.g2_ = user_saturation_;
-            saturation_.b_ = user_saturation_;
+            saturation_.r_ = opt_.saturation_;
+            saturation_.g1_ = opt_.saturation_;
+            saturation_.g2_ = opt_.saturation_;
+            saturation_.b_ = opt_.saturation_;
         } else {
             /**
             the camera sensor saturates at less than the maximum value.
@@ -756,12 +525,12 @@ public:
         note order permutation.
         **/
         Balance cam_mul;
-        if (user_wb_r_ > 0.0 && user_wb_b_ >= 0.0) {
+        if (opt_.wb_r_ > 0.0 && opt_.wb_b_ >= 0.0) {
             LOG("using user white balance...");
-            cam_mul.r_ = user_wb_r_;
+            cam_mul.r_ = opt_.wb_r_;
             cam_mul.g1_ = 1.0;
             cam_mul.g2_ = 1.0;
-            cam_mul.b_ = user_wb_b_;
+            cam_mul.b_ = opt_.wb_b_;
         } else {
             auto& raw_cam_mul = raw_image_.imgdata.rawdata.color.cam_mul;
             cam_mul.r_ = raw_cam_mul[0];
@@ -873,9 +642,9 @@ public:
         int sat_lum = saturated_.r_*rx + saturated_.g1_*gx + saturated_.g2_*gx + saturated_.b_*bx;
 
         int window = 32;
-        if (user_window_ > 0) {
+        if (opt_.window_ > 0) {
             LOG("using user dynamic range window...");
-            window = user_window_;
+            window = opt_.window_;
         }
         LOG("dynamic range window: "<<window);
 
@@ -885,18 +654,18 @@ public:
 
         /** expand the noise floor a bit. **/
         int noise = noise_;
-        if (user_noise_ > 0) {
+        if (opt_.noise_ > 0) {
             LOG("using user noise floor...");
-            noise = user_noise_;
+            noise = opt_.noise_;
         }
         LOG("noise floor: "<<noise);
         noise = noise * 150 / 100;
 
         /** dramatically move a pixel from its average luminance. **/
         double drama = 1.5;
-        if (user_drama_ > 0.0) {
+        if (opt_.drama_ > 0.0) {
             LOG("using user dynamic range amplification...");
-            drama = user_drama_;
+            drama = opt_.drama_;
         }
         LOG("dynamic range expansion factor: "<<drama);
 
@@ -943,7 +712,7 @@ public:
 
     void interpolate() {
         /** halfsize option disables demosaicing. **/
-        if (halfsize_) {
+        if (opt_.halfsize_) {
             LOG("interpolation disabled by --halfsize option.");
             return;
         }
@@ -1056,12 +825,12 @@ public:
         }
 
         auto_brightness_ = 0.0;
-        if (user_auto_brightness_ < 0.0) {
+        if (opt_.auto_brightness_ < 0.0) {
             return;
         }
 
         int sz = wd * ht;
-        int target = sz * user_auto_brightness_;
+        int target = sz * opt_.auto_brightness_;
         int count = 0;
         for (int i = 65535; i >= 0; --i) {
             count += histogram[i];
@@ -1089,12 +858,12 @@ public:
 
         /** account for user specified auto or linear brightness. **/
         double brightness = 1.0;
-        if (user_auto_brightness_ >= 0.0) {
-            LOG("using user auto brightness: "<<user_auto_brightness_<<" "<<auto_brightness_);
+        if (opt_.auto_brightness_ >= 0.0) {
+            LOG("using user auto brightness: "<<opt_.auto_brightness_<<" "<<auto_brightness_);
             brightness = auto_brightness_;
-        } else if (user_linear_brightness_ > 0.0) {
-            LOG("using user linear brightness: "<<user_linear_brightness_);
-            brightness = user_linear_brightness_;
+        } else if (opt_.linear_brightness_ > 0.0) {
+            LOG("using user linear brightness: "<<opt_.linear_brightness_);
+            brightness = opt_.linear_brightness_;
         }
         for (int k = 0; k < 3; ++k) {
             for (int i = 0; i < 3; ++i) {
@@ -1148,10 +917,10 @@ public:
 
         double pwr;
         double ts;
-        if (user_gamma0_ > 0.0 && user_gamma1_ > 0.0) {
+        if (opt_.gamma0_ > 0.0 && opt_.gamma1_ > 0.0) {
             LOG("using user gamma correction...");
-            pwr =  1.0 / user_gamma0_;
-            ts = user_gamma1_;
+            pwr =  1.0 / opt_.gamma0_;
+            ts = opt_.gamma1_;
         } else {
             /** using camera's gamma. **/
             pwr = raw_image_.imgdata.params.gamm[0];
@@ -1238,7 +1007,7 @@ public:
     }
 
     void write_png() {
-        LOG("writing to: \""<<out_filename_<<"\"...");
+        LOG("writing to: \""<<opt_.out_filename_<<"\"...");
         int wd = image_.r_.width_;
         int ht = image_.r_.height_;
         Png png;
@@ -1254,7 +1023,7 @@ public:
                 png.data_[idx+2] = pin_to_8bits(b);
             }
         }
-        png.write(out_filename_.c_str());
+        png.write(opt_.out_filename_.c_str());
     }
 
     int pin_to_8bits(
