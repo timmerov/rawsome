@@ -359,11 +359,11 @@ public:
         LOG("");
         LOG("  -w --white-balance red,blue : override camera white balance.");
         LOG("");
-        LOG("  -n --noise noise     : override noise floor when expanding dynamic range.");
-        LOG("  -d --dynamic dynamic : sets the dynamic range expansion factor. default 1.5");
-        LOG("  -W --window window   : set the dynamic range gaussian window. default 32");
+        LOG("  -n --noise noise    : override noise floor when expanding dynamic range.");
+        LOG("  -d --dynamic dynamic: sets the dynamic range expansion factor. default 1.5");
+        LOG("  -W --window window  : set the dynamic range gaussian window. default 32");
         LOG("");
-        LOG("  -h --halfsize         : disables demosaicing.");
+        LOG("  -h --halfsize       : disables demosaicing.");
         LOG("     the bayer block of RGGB is treated as a single pixel.");
         LOG("");
         LOG("  -a --auto-brightness fraction:");
@@ -372,7 +372,7 @@ public:
         LOG("  -b --linear-brightness brightness:");
         LOG("     uniformly scale pixel values. default 1.0.");
         LOG("");
-        LOG("  -g --gamma g0,g1      : override camera gamma. default 2.22,4.5");
+        LOG("  -g --gamma g0,g1    : override camera gamma. default 2.22,4.5");
         LOG("     set to 1 1 to disable gamma correction.");
     }
 
