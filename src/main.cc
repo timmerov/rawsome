@@ -102,23 +102,6 @@ like maybe not illuminated?
 are they maybe literally camera noise?
 **/
 
-/**
-the moon is about 724 pixels wide.
-it's area is about 400k pixels.
-the image is 6000*4000
-so the moon is about 1.7% of the pixels.
-count pixels from brightest to get to 1%.
-above that threshold we're definitely in the moon.
-90% of the pixels are black sky pixels.
-count pixels from the darkest to get to 90%.
-below that threshold we're definitely in the black.
-average the two thresholds for moon/not-moon pixels.
-
-or...
-use joint index.
-where X% of the pixels consume 1-X% of the range.
-**/
-
 #include "dump.h"
 #include "image.h"
 #include "log.h"
@@ -778,10 +761,10 @@ public:
     }
 
     void interpolate_horz_1331() {
-        image_.r_.interpolate_horz_1331(saturated_.r_);
-        image_.g1_.interpolate_horz_1331(saturated_.g1_);
-        image_.g2_.interpolate_horz_1331(saturated_.g2_);
-        image_.b_.interpolate_horz_1331(saturated_.b_);
+        image_.r_.interpolate_horz_1331_mt(saturated_.r_);
+        image_.g1_.interpolate_horz_1331_mt(saturated_.g1_);
+        image_.g2_.interpolate_horz_1331_mt(saturated_.g2_);
+        image_.b_.interpolate_horz_1331_mt(saturated_.b_);
     }
 
     void combine_greens() {

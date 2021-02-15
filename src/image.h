@@ -32,10 +32,13 @@ public:
 
     /** transpose the image. **/
     void transpose();
+    void transpose_mt();
 
     /** interpolate intermediate horizontal pixels. **/
     void interpolate_horz_1331();
     void interpolate_horz_1331(int sat);
+    void interpolate_horz_1331_mt();
+    void interpolate_horz_1331_mt(int sat);
 
     /** downsample by 2x. **/
     void downsample(Plane &src);
@@ -43,6 +46,7 @@ public:
     /** apply 121 gaussian N times. **/
     void gaussian(int n);
     void gaussian_horz(int n);
+    void gaussian_horz_mt(int n);
 };
 
 class Image {

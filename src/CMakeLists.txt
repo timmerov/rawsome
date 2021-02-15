@@ -34,5 +34,6 @@ target_compile_definitions(${THIS_TARGET_NAME} PRIVATE AGM_TARGET=${THIS_TARGET_
 set(LIBS
     png
     raw
+    pthread
 )
 target_link_libraries(${THIS_TARGET_NAME} ${LIBS})
