@@ -570,6 +570,10 @@ public:
 
     void adjust_dynamic_range() {
         LOG("adjusting dynamic range...");
+        if (opt_.drama_ <= 0.0) {
+            LOG("dynamic range is not enabled.");
+            return;
+        }
 
         /**
         this technique has promise.
@@ -645,11 +649,7 @@ public:
         noise = noise * 150 / 100;
 
         /** dramatically move a pixel from its average luminance. **/
-        double drama = 1.5;
-        if (opt_.drama_ > 0.0) {
-            LOG("using user dynamic range amplification...");
-            drama = opt_.drama_;
-        }
+        double drama = opt_.drama_;
         LOG("dynamic range expansion factor: "<<drama);
 
         for (int y = 0; y < ht; ++y) {
@@ -694,6 +694,8 @@ public:
     }
 
     void interpolate() {
+        LOG("interpolating pixels...");
+
         /** halfsize option disables demosaicing. **/
         if (opt_.halfsize_) {
             LOG("interpolation disabled by --halfsize option.");
@@ -717,7 +719,6 @@ public:
            ?           ?
         **/
 
-        LOG("interpolating pixels...");
         /**
         applying the 1331 filter is really fast for horizontal pixels.
         so we transpose while small.

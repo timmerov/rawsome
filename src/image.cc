@@ -156,7 +156,7 @@ void Plane::interpolate_horz_1331() {
             c1 = c2;
             c2 = c3;
             c3 = get(x, y);
-            int new_c = (c0 + 3*c1 + 3*c2 + c3) / 8;
+            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
             dst.set(dstx, y, c1);
             dst.set(dstx+1, y, new_c);
             dstx += 2;
@@ -202,7 +202,7 @@ void interpolate_horz_1331_sat_thread(
             }
             int new_c;
             if (bits == 0) {
-                new_c = (c0 + 3*c1 + 3*c2 + c3 + 4) / 8;
+                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
             } else {
                 int mid_bits = bits & (2|4);
                 switch (mid_bits) {
@@ -301,7 +301,7 @@ void Plane::interpolate_horz_1331(
             }
             int new_c;
             if (bits == 0) {
-                new_c = (c0 + 3*c1 + 3*c2 + c3 + 4) / 8;
+                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
             } else {
                 int mid_bits = bits & (2|4);
                 switch (mid_bits) {
@@ -348,7 +348,7 @@ void interpolate_horz_1331_thread(
             c1 = c2;
             c2 = c3;
             c3 = src->get(x, y);
-            int new_c = (c0 + 3*c1 + 3*c2 + c3) / 8;
+            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
             dst->set(dstx, y, c1);
             dst->set(dstx+1, y, new_c);
             dstx += 2;
