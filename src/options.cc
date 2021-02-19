@@ -131,8 +131,9 @@ bool Options::parse(
     window_ = 0;
     auto_brightness_ = -1.0;
     linear_brightness_ = 0.0;
+    color_enhancement_ = 0.0;
 
-    const char *options_short = "?i:o:s:w:n:d:W:ha:b:g:";
+    const char *options_short = "?i:o:s:w:n:d:W:ha:b:c:g:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
@@ -145,6 +146,7 @@ bool Options::parse(
         {'h', "halfsize"},
         {'a', "auto-brightness"},
         {'b', "linear-brightness"},
+        {'c', "color-enhancement"},
         {'g', "gamma"},
         {0, nullptr}
     };
@@ -194,6 +196,9 @@ bool Options::parse(
             break;
         case 'b':
             linear_brightness_ = std::atof(clo.value_);
+            break;
+        case 'c':
+            color_enhancement_ = std::atof(clo.value_);
             break;
         case 'g': {
             bool good = comma_separated_inputs(clo.value_, gamma0_, gamma1_);
@@ -247,6 +252,10 @@ void Options::print_usage() {
     LOG("     set to -1 to disable. default 0.");
     LOG("  -b --linear-brightness brightness:");
     LOG("     uniformly scale pixel values. default 1.0.");
+    LOG("");
+    LOG("  -c --color-enhancement factor:");
+    LOG("     convert to yuv. scale uv by factor. convert back to rgb.");
+    LOG("     default 0.0.");
     LOG("");
     LOG("  -g --gamma g0,g1    : override camera gamma. default 2.22,4.5");
     LOG("     set to 1 1 to disable gamma correction.");

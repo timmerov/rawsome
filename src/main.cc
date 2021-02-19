@@ -198,6 +198,8 @@ public:
         determine_auto_brightness();
         convert_to_srgb();
         show_special_pixel();
+        enhance_colors();
+        show_special_pixel();
         apply_gamma();
         show_special_pixel();
         scale_to_8bits();
@@ -878,6 +880,87 @@ public:
                 out_r = mat[0][0]*in_r + mat[0][1]*in_g + mat[0][2]*in_b;
                 out_g = mat[1][0]*in_r + mat[1][1]*in_g + mat[1][2]*in_b;
                 out_b = mat[2][0]*in_r + mat[2][1]*in_g + mat[2][2]*in_b;
+
+                /** ensure we don't change color on overflow. **/
+                int maxc = std::max(std::max(out_r, out_g), out_b);
+                if (maxc > 65535.0) {
+                    double factor = 65535.0 / maxc;
+                    out_r *= factor;
+                    out_g *= factor;
+                    out_b *= factor;
+                }
+            }
+
+            /** overwrite old values. **/
+            image_.r_.samples_[i] = out_r;
+            image_.g1_.samples_[i] = out_g;
+            image_.b_.samples_[i] = out_b;
+        }
+    }
+
+    void enhance_colors() {
+        LOG("enhancing colors...");
+        double factor = opt_.color_enhancement_;
+        if (factor <= 0.0 || factor == 1.0) {
+            LOG("color enhancement is disabled.");
+            return;
+        }
+        LOG("color enhancement factor: "<<factor);
+
+        /**
+        rgb to yuv
+        Y =  0.257 * R + 0.504 * G + 0.098 * B +  16;
+        U = -0.148 * R - 0.291 * G + 0.439 * B + 128;
+        V =  0.439 * R - 0.368 * G - 0.071 * B + 128;
+        yuv to rgb
+        Y -= 16;
+        U -= 128;
+        V -= 128;
+        R = 1.164 * Y             + 1.596 * V;
+        G = 1.164 * Y - 0.392 * U - 0.813 * V;
+        B = 1.164 * Y + 2.017 * U;
+        re-arranging:
+        Y =  0.257*1.164 * R + 0.504*1.164 * G + 0.098*1.164 * B;
+        U = -0.148 * R - 0.291 * G + 0.439 * B;
+        V =  0.439 * R - 0.368 * G - 0.071 * B;
+        R = Y             + 1.596 * V;
+        G = Y - 0.392 * U - 0.813 * V;
+        B = Y + 2.017 * U;
+        **/
+
+        int sz = image_.r_.width_ * image_.r_.height_;
+        for (int i = 0; i < sz; ++i) {
+            /** start with the original rgb. **/
+            int in_r = image_.r_.samples_[i];
+            int in_g = image_.g1_.samples_[i];
+            int in_b = image_.b_.samples_[i];
+
+            double out_r;
+            double out_g;
+            double out_b;
+
+            /** ensure saturated pixels stay saturated. **/
+            if (in_r >= saturated_.r_
+            &&  in_g >= saturated_.g1_
+            &&  in_b >= saturated_.b_) {
+                out_r = 65535.0;
+                out_g = 65535.0;
+                out_b = 65535.0;
+            } else {
+                /** transform to yuv. **/
+                double y = +0.257*in_r + 0.504*in_g + 0.098*in_b;
+                double u = -0.148*in_r - 0.291*in_g + 0.439*in_b;
+                double v = +0.439*in_r - 0.368*in_g - 0.071*in_b;
+
+                /** enhance colors. **/
+                y *= 1.164;
+                u *= factor;
+                v *= factor;
+
+                /** transform back to rgb. **/
+                out_r = y + 1.596*v;
+                out_g = y - 0.392*u - 0.813*v;
+                out_b = y + 2.017*u;
 
                 /** ensure we don't change color on overflow. **/
                 int maxc = std::max(std::max(out_r, out_g), out_b);

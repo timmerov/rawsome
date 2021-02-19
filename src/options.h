@@ -28,6 +28,7 @@ public:
     int window_ = 0;
     double auto_brightness_ = -1.0;
     double linear_brightness_ = 0.0;
+    double color_enhancement_ = 0.0;
 
     bool parse(int argc, clo_argv_t argv);
 
