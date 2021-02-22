@@ -27,7 +27,7 @@ void Plane::init(
     width_ = wd;
     height_ = ht;
     int sz = wd * ht;
-    samples_.resize(sz);
+    samples_.resize(sz, 0);
 }
 
 void Plane::set(
@@ -56,9 +56,9 @@ void Plane::scale(
     for (int i = 0; i < sz; ++i) {
         int x = samples_[i];
         x -= low;
-        if (x < 0) {
+        /*if (x < 0) {
             x = 0;
-        }
+        }*/
         x = x * factor;
         samples_[i] = x;
     }

@@ -1116,6 +1116,167 @@ public:
         }
         return x;
     }
+
+    static const int kWidth = 640/2;
+    static const int kHeight = 360/2;
+    static const int kSize = kWidth * kHeight;
+
+    int special_stack() {
+
+        Image stack;
+        stack.init(kWidth, kHeight);
+
+        //const int kFirst = 873;
+        //const int kLast = 882;
+        const int kFirst = 884;
+        const int kLast = 933;
+        int count = 0;
+        for (int i = kFirst; i <= kLast; ++i) {
+            if (i == 890) {
+                continue;
+            }
+            std::stringstream ss;
+            ss<<"/home/timmer/Pictures/2020-12-22/stackable/IMG_0"<<i<<".CR2";
+            opt_.in_filename_ = ss.str();
+            ss.clear();
+            ss.str("");
+            ss<<"/home/timmer/Pictures/2020-12-22/stackable/IMG_0"<<i<<".png";
+            opt_.out_filename_ = ss.str();
+
+            load_raw_image();
+            if (is_loaded_ == false) {
+                continue;
+            }
+            ++count;
+
+            copy_raw_to_image();
+            determine_black();
+            crop_black();
+
+            //histogram();
+            hack_crop();
+
+            determine_saturation();
+            //desaturate_pixels();
+            scale_image();
+
+            for (int k = 0; k < kSize; ++k) {
+                stack.r_.samples_[k] += image_.r_.samples_[k];
+                stack.g1_.samples_[k] += image_.g1_.samples_[k];
+                stack.g2_.samples_[k] += image_.g2_.samples_[k];
+                stack.b_.samples_[k] += image_.b_.samples_[k];
+            }
+
+            //adjust_dynamic_range();
+            interpolate();
+            combine_greens();
+            convert_to_srgb();
+            //enhance_colors();
+            apply_gamma();
+            scale_to_8bits();
+            write_png();
+        }
+
+        opt_.out_filename_  = "/home/timmer/Pictures/2020-12-22/stackable/stack.png";
+        image_.init(kWidth, kHeight);
+        for (int k = 0; k < kSize; ++k) {
+            image_.r_.samples_[k] = (stack.r_.samples_[k] + count/2) / count;
+            image_.g1_.samples_[k] = (stack.g1_.samples_[k] + count/2) / count;
+            image_.g2_.samples_[k] = (stack.g2_.samples_[k] + count/2) / count;
+            image_.b_.samples_[k] = (stack.b_.samples_[k] + count/2) / count;
+        }
+
+        //adjust_dynamic_range();
+        interpolate();
+        combine_greens();
+        convert_to_srgb();
+        //enhance_colors();
+        apply_gamma();
+        scale_to_8bits();
+        write_png();
+
+        return 0;
+    }
+
+    void hack_crop() {
+        int wd = image_.r_.width_;
+        int ht = image_.r_.height_;
+
+        const int kThreshold = 3000;
+        int maxx = 0;
+        int maxy = 0;
+        int minx = wd;
+        int miny = ht;
+
+        for (int y = 0; y < ht; ++y) {
+            for (int x = 0; x < wd; ++x) {
+                int r = image_.r_.get(x, y);
+                int g1 = image_.g1_.get(x, y);
+                int g2 = image_.g2_.get(x, y);
+                int b = image_.b_.get(x, y);
+                if (r >= kThreshold
+                ||  g1 >= kThreshold
+                ||  g2 >= kThreshold
+                ||  b >= kThreshold) {
+                    maxx = std::max(maxx, x);
+                    maxy = std::max(maxy, y);
+                    minx = std::min(minx, x);
+                    miny = std::min(miny, y);
+                }
+            }
+        }
+
+        int centerx = (minx + maxx + 1) / 2;
+        int centery = (miny + maxy + 1) / 2;
+        LOG("center="<<centerx<<","<<centery);
+
+        int left = centerx - kWidth/2;
+        int top = centery - kHeight/2;
+        image_.crop(left, top, left+kWidth, top+kHeight);
+    }
+
+    void histogram() {
+        std::vector<int> hist;
+        hist.resize(16384, 0);
+
+        int sz = image_.r_.width_ * image_.r_.height_;
+        for (int i = 0; i < sz; ++i) {
+            int r = image_.r_.samples_[i];
+            int g1 = image_.g1_.samples_[i];
+            int g2 = image_.g2_.samples_[i];
+            int b = image_.b_.samples_[i];
+            r = pin_to_14bits(r);
+            g1 = pin_to_14bits(g1);
+            g2 = pin_to_14bits(g2);
+            b = pin_to_14bits(b);
+            ++hist[r];
+            ++hist[g1];
+            ++hist[g2];
+            ++hist[b];
+        }
+
+        LOG("histogram:");
+        for (int i = 0; i < 16384;i += 32) {
+            std::stringstream ss;
+            ss<<i<<":";
+            for (int k = 0; k < 32; ++k) {
+                ss<<" "<<hist[i+k];
+            }
+            LOG(ss.str());
+        }
+    }
+
+    int pin_to_14bits(
+        int x
+    ) {
+        if (x < 0) {
+            return 0;
+        }
+        if (x > 16384) {
+            return 16384;
+        }
+        return x;
+    }
 };
 
 }
@@ -1127,7 +1288,10 @@ int main(
     rs_log::init("rawsome.log");
 
     Rawsome rawsome;
-    int exit_code = rawsome.run(argc, argv);
+    //int exit_code = rawsome.run(argc, argv);
+    int exit_code = rawsome.special_stack();
+    (void) argc;
+    (void) argv;
 
     return exit_code;
 }
