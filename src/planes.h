@@ -49,10 +49,10 @@ public:
     void gaussian_horz_mt(int n);
 };
 
-class Image {
+class Planes {
 public:
-    Image();
-    ~Image();
+    Planes();
+    ~Planes();
 
     Plane r_;
     Plane g1_;

@@ -6,7 +6,7 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 data structures for image processing.
 **/
 
-#include "image.h"
+#include "planes.h"
 
 #include <thread>
 
@@ -525,13 +525,13 @@ void Plane::gaussian_horz_mt(
     th7.join();
 }
 
-Image::Image() {
+Planes::Planes() {
 }
 
-Image::~Image() {
+Planes::~Planes() {
 }
 
-void Image::init(
+void Planes::init(
     int wd,
     int ht
 ) {
@@ -541,7 +541,7 @@ void Image::init(
     b_.init(wd, ht);
 }
 
-void Image::crop(
+void Planes::crop(
     int left,
     int top,
     int right,
@@ -553,14 +553,14 @@ void Image::crop(
     b_.crop(left, top, right, bottom);
 }
 
-void Image::transpose() {
+void Planes::transpose() {
     r_.transpose_mt();
     g1_.transpose_mt();
     g2_.transpose_mt();
     b_.transpose_mt();
 }
 
-void Image::interpolate_horz_1331() {
+void Planes::interpolate_horz_1331() {
     r_.interpolate_horz_1331_mt();
     g1_.interpolate_horz_1331_mt();
     g2_.interpolate_horz_1331_mt();
