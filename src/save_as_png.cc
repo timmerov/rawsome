@@ -103,9 +103,9 @@ are they maybe literally camera noise?
 **/
 
 #include "dump.h"
+#include "image.h"
 #include "log.h"
 #include "options.h"
-#include "planes.h"
 #include "rs_png.h"
 
 #include <libraw/libraw.h>
@@ -143,19 +143,13 @@ public:
     double b_ = 1.0;
 };
 
-class Rawsome {
+class SaveAsPng {
 public:
-    Rawsome() = default;
-    ~Rawsome() {
-        if (is_loaded_) {
-            raw_image_.recycle();
-        }
-    }
+    SaveAsPng() = default;
+    ~SaveAsPng() = default;
 
     Options opt_;
-    LibRaw raw_image_;
-    bool is_loaded_ = false;
-    Planes planes_;
+    Image image_;
     RggbPixel black_;
     int noise_;
     std::vector<int> gamma_curve_;
@@ -175,13 +169,12 @@ public:
             return 1;
         }
 
-        load_raw_image();
-        if (is_loaded_ == false) {
+        image_.load_raw(opt_.in_filename_.c_str());
+        if (image_.is_loaded_ == false) {
             return 1;
         }
 
-        show_camera_parameters();
-        copy_raw_to_image();
+        image_.camera_.print();
         determine_black();
         crop_black();
         show_special_pixel();
@@ -217,91 +210,6 @@ public:
         LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
     }
 
-    void load_raw_image() {
-        LOG("loading raw image from: \""<<opt_.in_filename_<<"\"...");
-        is_loaded_ = false;
-        raw_image_.open_file(opt_.in_filename_.c_str());
-        int raw_wd = raw_image_.imgdata.sizes.width;
-        int raw_ht = raw_image_.imgdata.sizes.height;
-        LOG("raw_wd="<<raw_wd);
-        LOG("raw_ht="<<raw_ht);
-        if (raw_wd <= 0 || raw_ht <= 0) {
-            LOG("File not opened: "<<opt_.in_filename_);
-            return;
-        }
-        raw_image_.unpack();
-        raw_image_.raw2image();
-        //dump(raw_image_);
-        is_loaded_ = true;
-    }
-
-    void show_camera_parameters() {
-        double gamma0 = raw_image_.imgdata.params.gamm[0];
-        double gamma1 = raw_image_.imgdata.params.gamm[1];
-        gamma0 = 1.0 / gamma0;
-
-        double white_balance_r = raw_image_.imgdata.color.cam_mul[0];
-        double white_balance_g = raw_image_.imgdata.color.cam_mul[1];
-        double white_balance_b = raw_image_.imgdata.color.cam_mul[2];
-        white_balance_r /= white_balance_g;
-        white_balance_b /= white_balance_g;
-
-        auto tm = std::localtime(&raw_image_.imgdata.other.timestamp);
-
-        LOG("make         : "<<raw_image_.imgdata.idata.make);
-        LOG("model        : "<<raw_image_.imgdata.idata.model);
-        LOG("lens         : "<<raw_image_.imgdata.lens.Lens);
-        LOG("gamma        : "<<gamma0<<" "<<gamma1);
-        LOG("white balance: R="<<white_balance_r<<" B="<<white_balance_b);
-        LOG("iso          : "<<raw_image_.imgdata.other.iso_speed);
-        LOG("shutter      : "<<raw_image_.imgdata.other.shutter<<"s");
-        LOG("aperture     : f/"<<raw_image_.imgdata.other.aperture);
-        LOG("focal_len    : "<<raw_image_.imgdata.other.focal_len);
-        LOG("timestamp    : "<<std::put_time(tm, "%c %Z"));
-        LOG("temp         : "<<raw_image_.imgdata.other.CameraTemperature);
-    }
-
-    void copy_raw_to_image() {
-        LOG("copying raw to image...");
-        /**
-        raw_image_.imgdata.rawdata.raw_image is the raw samples in bayer format.
-        evem rows: G B G B G B ...
-        odd  rows: R G R G R G ...
-        we want this pattern:
-        every row: R G G B R G G B ...
-
-        i don't know why the bayer pattern is GB/RG.
-        i was expecting it to be RG/GB.
-        but experimentation shows otherwise.
-        maybe it has to do with the odd number of rows?
-        and the pattern is bottom justified?
-        dunno.
-        weird.
-        **/
-        int raw_wd = raw_image_.imgdata.sizes.width;
-        int raw_ht = raw_image_.imgdata.sizes.height;
-        int wd = raw_wd / 2;
-        int ht = raw_ht / 2;
-        planes_.init(wd, ht);
-
-        for (int y = 0; y < ht; ++y) {
-            for (int x = 0; x < wd; ++x) {
-                int raw_idx = 2*x + 2*y*raw_wd;
-
-                /** extract rggb from the GB/RG bayer pattern **/
-                int g2 = raw_image_.imgdata.rawdata.raw_image[raw_idx];
-                int b  = raw_image_.imgdata.rawdata.raw_image[raw_idx+1];
-                int r  = raw_image_.imgdata.rawdata.raw_image[raw_idx+raw_wd];
-                int g1 = raw_image_.imgdata.rawdata.raw_image[raw_idx+raw_wd+1];
-
-                planes_.r_.set(x, y, r);
-                planes_.g1_.set(x, y, g1);
-                planes_.g2_.set(x, y, g2);
-                planes_.b_.set(x, y, b);
-            }
-        }
-    }
-
     void determine_black() {
         LOG("determining black...");
         /**
@@ -309,10 +217,10 @@ public:
         also set the black noise level.
         **/
         noise_ = 0;
-        black_.r_ = determine_black(planes_.r_);
-        black_.g1_ = determine_black(planes_.g1_);
-        black_.g2_ = determine_black(planes_.g2_);
-        black_.b_ = determine_black(planes_.b_);
+        black_.r_ = determine_black(image_.planes_.r_);
+        black_.g1_ = determine_black(image_.planes_.g1_);
+        black_.g2_ = determine_black(image_.planes_.g2_);
+        black_.b_ = determine_black(image_.planes_.b_);
         LOG("black is: "<<black_.r_<<" "<<black_.g1_<<" "<<black_.g2_<<" "<<black_.b_);
 
         /** adjust noise for black levels. **/
@@ -363,9 +271,9 @@ public:
         the rest of the pixels are the actual image.
         **/
         /** left, top, right, bottom **/
-        planes_.crop(38, 18, planes_.r_.width_, planes_.r_.height_);
-        LOG("cropped width ="<<planes_.r_.width_);
-        LOG("cropped height="<<planes_.r_.height_);
+        image_.planes_.crop(38, 18, image_.planes_.r_.width_, image_.planes_.r_.height_);
+        LOG("cropped width ="<<image_.planes_.r_.width_);
+        LOG("cropped height="<<image_.planes_.r_.height_);
     }
 
     void determine_saturation() {
@@ -381,10 +289,10 @@ public:
             /**
             the camera sensor saturates at less than the maximum value.
             **/
-            saturation_.r_ = determine_saturation(planes_.r_);
-            saturation_.g1_ = determine_saturation(planes_.g1_);
-            saturation_.g2_ = determine_saturation(planes_.g2_);
-            saturation_.b_ = determine_saturation(planes_.b_);
+            saturation_.r_ = determine_saturation(image_.planes_.r_);
+            saturation_.g1_ = determine_saturation(image_.planes_.g1_);
+            saturation_.g2_ = determine_saturation(image_.planes_.g2_);
+            saturation_.b_ = determine_saturation(image_.planes_.b_);
         }
 
         LOG("saturation is: "<<saturation_.r_<<" "<<saturation_.g1_<<" "<<saturation_.g2_<<" "<<saturation_.b_);
@@ -473,22 +381,22 @@ public:
         LOG("setting saturated pixels to white...");
         /** if any component is saturated then saturate all components. **/
         int count = 0;
-        int wd = planes_.r_.width_;
-        int ht = planes_.r_.height_;
+        int wd = image_.planes_.r_.width_;
+        int ht = image_.planes_.r_.height_;
         int sz = wd * ht;
         for (int i = 0; i < sz; ++i) {
-            int r = planes_.r_.samples_[i];
-            int g1 = planes_.g1_.samples_[i];
-            int g2 = planes_.g2_.samples_[i];
-            int b = planes_.b_.samples_[i];
+            int r = image_.planes_.r_.samples_[i];
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            int b = image_.planes_.b_.samples_[i];
             if (r >= saturated_.r_
             ||  g1 >= saturated_.g1_
             ||  g2 >= saturated_.g2_
             ||  b >= saturated_.b_) {
-                planes_.r_.samples_[i] = saturated_.r_;
-                planes_.g1_.samples_[i] = saturated_.g1_;
-                planes_.g2_.samples_[i] = saturated_.g2_;
-                planes_.b_.samples_[i] = saturated_.b_;
+                image_.planes_.r_.samples_[i] = saturated_.r_;
+                image_.planes_.g1_.samples_[i] = saturated_.g1_;
+                image_.planes_.g2_.samples_[i] = saturated_.g2_;
+                image_.planes_.b_.samples_[i] = saturated_.b_;
                 ++count;
             }
         }
@@ -517,12 +425,10 @@ public:
             cam_mul.g2_ = 1.0;
             cam_mul.b_ = opt_.wb_b_;
         } else {
-            auto& raw_cam_mul = raw_image_.imgdata.rawdata.color.cam_mul;
-            cam_mul.r_ = raw_cam_mul[0];
-            cam_mul.g1_ = raw_cam_mul[1];
-            cam_mul.g2_ = raw_cam_mul[3];
-            cam_mul.b_ = raw_cam_mul[2];
-            //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
+            cam_mul.r_ = image_.camera_.wb_r_;
+            cam_mul.g1_ = 1.0;
+            cam_mul.g2_ = 1.0;
+            cam_mul.b_ = image_.camera_.wb_b_;
         }
 
         /** find the smallest multiplier. **/
@@ -557,10 +463,10 @@ public:
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** subtract black and white balance. **/
-        planes_.r_.scale(black_.r_, cam_mul.r_);
-        planes_.g1_.scale(black_.g1_, cam_mul.g1_);
-        planes_.g2_.scale(black_.g2_, cam_mul.g2_);
-        planes_.b_.scale(black_.b_, cam_mul.b_);
+        image_.planes_.r_.scale(black_.r_, cam_mul.r_);
+        image_.planes_.g1_.scale(black_.g1_, cam_mul.g1_);
+        image_.planes_.g2_.scale(black_.g2_, cam_mul.g2_);
+        image_.planes_.b_.scale(black_.b_, cam_mul.b_);
 
         /** update the saturated values. **/
         saturated_.r_ = (saturated_.r_ - black_.r_) * cam_mul.r_;
@@ -614,15 +520,15 @@ public:
         gx /= 2.0;
 
         /** compute luminance for all pixels. **/
-        int wd = planes_.r_.width_;
-        int ht = planes_.r_.height_;
+        int wd = image_.planes_.r_.width_;
+        int ht = image_.planes_.r_.height_;
         luminance_.init(wd, ht);
         int sz = wd * ht;
         for (int i = 0; i < sz; ++i) {
-            int r = planes_.r_.samples_[i];
-            int g1 = planes_.g1_.samples_[i];
-            int g2 = planes_.g2_.samples_[i];
-            int b = planes_.b_.samples_[i];
+            int r = image_.planes_.r_.samples_[i];
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            int b = image_.planes_.b_.samples_[i];
             int lum = r*rx + g1*gx + g2*gx + b*bx;
             luminance_.samples_[i] = lum;
         }
@@ -674,10 +580,10 @@ public:
                 double target_lum = avg_lum + drama*(lum - avg_lum);
 
                 /** get the components. **/
-                double r = planes_.r_.get(x, y);
-                double g1 = planes_.g1_.get(x, y);
-                double g2 = planes_.g2_.get(x, y);
-                double b = planes_.b_.get(x, y);
+                double r = image_.planes_.r_.get(x, y);
+                double g1 = image_.planes_.g1_.get(x, y);
+                double g2 = image_.planes_.g2_.get(x, y);
+                double b = image_.planes_.b_.get(x, y);
 
                 /** scale the components. **/
                 double factor = target_lum / lum;
@@ -687,10 +593,10 @@ public:
                 b *= factor;
 
                 /** store the dynamically enhanced pixel **/
-                planes_.r_.set(x, y, r);
-                planes_.g1_.set(x, y, g1);
-                planes_.g2_.set(x, y, g2);
-                planes_.b_.set(x, y, b);
+                image_.planes_.r_.set(x, y, r);
+                image_.planes_.g1_.set(x, y, g1);
+                image_.planes_.g2_.set(x, y, g2);
+                image_.planes_.b_.set(x, y, b);
             }
         }
     }
@@ -728,9 +634,9 @@ public:
         tanspose again while medium sized.
         add pixels horizontally again.
         **/
-        planes_.transpose();
+        image_.planes_.transpose();
         interpolate_horz_1331();
-        planes_.transpose();
+        image_.planes_.transpose();
         interpolate_horz_1331();
 
         /**
@@ -749,34 +655,34 @@ public:
         r g r g r g
         g b g b g b
         **/
-        int wd = planes_.r_.width_ - 1;
-        int ht = planes_.r_.height_ - 1;
-        planes_.r_.crop(1, 1, wd+1, ht+1);
-        planes_.g1_.crop(0, 1, wd, ht+1);
-        planes_.g2_.crop(1, 0, wd+1, ht);
-        planes_.b_.crop(0, 0, wd, ht);
+        int wd = image_.planes_.r_.width_ - 1;
+        int ht = image_.planes_.r_.height_ - 1;
+        image_.planes_.r_.crop(1, 1, wd+1, ht+1);
+        image_.planes_.g1_.crop(0, 1, wd, ht+1);
+        image_.planes_.g2_.crop(1, 0, wd+1, ht);
+        image_.planes_.b_.crop(0, 0, wd, ht);
 
-        LOG("interpolated width ="<<planes_.r_.width_);
-        LOG("interpolated height="<<planes_.r_.height_);
+        LOG("interpolated width ="<<image_.planes_.r_.width_);
+        LOG("interpolated height="<<image_.planes_.r_.height_);
 
         /** redo-desaturation after crop-shifting. **/
         desaturate_pixels();
     }
 
     void interpolate_horz_1331() {
-        planes_.r_.interpolate_horz_1331_mt(saturated_.r_);
-        planes_.g1_.interpolate_horz_1331_mt(saturated_.g1_);
-        planes_.g2_.interpolate_horz_1331_mt(saturated_.g2_);
-        planes_.b_.interpolate_horz_1331_mt(saturated_.b_);
+        image_.planes_.r_.interpolate_horz_1331_mt(saturated_.r_);
+        image_.planes_.g1_.interpolate_horz_1331_mt(saturated_.g1_);
+        image_.planes_.g2_.interpolate_horz_1331_mt(saturated_.g2_);
+        image_.planes_.b_.interpolate_horz_1331_mt(saturated_.b_);
     }
 
     void combine_greens() {
         LOG("combining greens...");
-        int sz = planes_.g1_.width_ * planes_.g1_.height_;
+        int sz = image_.planes_.g1_.width_ * image_.planes_.g1_.height_;
         for (int i = 0; i < sz; ++i) {
-            int g1 = planes_.g1_.samples_[i];
-            int g2 = planes_.g2_.samples_[i];
-            planes_.g1_.samples_[i] = (g1 + g2 + 1)/2;
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            image_.planes_.g1_.samples_[i] = (g1 + g2 + 1)/2;
         }
 
         /** update the saturated values. **/
@@ -857,12 +763,12 @@ public:
             }
         }
 
-        int sz = planes_.r_.width_ * planes_.r_.height_;
+        int sz = image_.planes_.r_.width_ * image_.planes_.r_.height_;
         for (int i = 0; i < sz; ++i) {
             /** start with the original rgb. **/
-            int in_r = planes_.r_.samples_[i];
-            int in_g = planes_.g1_.samples_[i];
-            int in_b = planes_.b_.samples_[i];
+            int in_r = image_.planes_.r_.samples_[i];
+            int in_g = image_.planes_.g1_.samples_[i];
+            int in_b = image_.planes_.b_.samples_[i];
 
             double out_r;
             double out_g;
@@ -892,9 +798,9 @@ public:
             }
 
             /** overwrite old values. **/
-            planes_.r_.samples_[i] = out_r;
-            planes_.g1_.samples_[i] = out_g;
-            planes_.b_.samples_[i] = out_b;
+            image_.planes_.r_.samples_[i] = out_r;
+            image_.planes_.g1_.samples_[i] = out_g;
+            image_.planes_.b_.samples_[i] = out_b;
         }
     }
 
@@ -928,12 +834,12 @@ public:
         B = Y + 2.017 * U;
         **/
 
-        int sz = planes_.r_.width_ * planes_.r_.height_;
+        int sz = image_.planes_.r_.width_ * image_.planes_.r_.height_;
         for (int i = 0; i < sz; ++i) {
             /** start with the original rgb. **/
-            int in_r = planes_.r_.samples_[i];
-            int in_g = planes_.g1_.samples_[i];
-            int in_b = planes_.b_.samples_[i];
+            int in_r = image_.planes_.r_.samples_[i];
+            int in_g = image_.planes_.g1_.samples_[i];
+            int in_b = image_.planes_.b_.samples_[i];
 
             double out_r;
             double out_g;
@@ -973,26 +879,28 @@ public:
             }
 
             /** overwrite old values. **/
-            planes_.r_.samples_[i] = out_r;
-            planes_.g1_.samples_[i] = out_g;
-            planes_.b_.samples_[i] = out_b;
+            image_.planes_.r_.samples_[i] = out_r;
+            image_.planes_.g1_.samples_[i] = out_g;
+            image_.planes_.b_.samples_[i] = out_b;
         }
     }
 
     void apply_gamma() {
         LOG("applying gamma correction...");
 
-        double pwr;
-        double ts;
+        double gamma0;
+        double gamma1;
         if (opt_.gamma0_ > 0.0 && opt_.gamma1_ > 0.0) {
             LOG("using user gamma correction...");
-            pwr =  1.0 / opt_.gamma0_;
-            ts = opt_.gamma1_;
+            gamma0 = opt_.gamma0_;
+            gamma1 = opt_.gamma1_;
         } else {
             /** using camera's gamma. **/
-            pwr = raw_image_.imgdata.params.gamm[0];
-            ts = raw_image_.imgdata.params.gamm[1];
+            gamma0 = image_.camera_.gamma0_;
+            gamma1 = image_.camera_.gamma1_;
         }
+        double pwr = 1.0 / gamma0;
+        double ts = gamma1;
 
         if (pwr == 1.0 && ts == 1.0) {
             LOG("gamma correction is disabled.");
@@ -1005,9 +913,9 @@ public:
         int white = 0x10000;
         gamma_curve(pwr, ts, white);
 
-        apply_gamma(planes_.r_);
-        apply_gamma(planes_.g1_);
-        apply_gamma(planes_.b_);
+        apply_gamma(image_.planes_.r_);
+        apply_gamma(image_.planes_.g1_);
+        apply_gamma(image_.planes_.b_);
     }
 
     /** derived from dcraw. **/
@@ -1068,22 +976,22 @@ public:
     void scale_to_8bits() {
         LOG("scaling to 8 bits per sample..");
         double factor = 255.0/65535.0;
-        planes_.r_.scale(0, factor);
-        planes_.g1_.scale(0, factor);
-        planes_.b_.scale(0, factor);
+        image_.planes_.r_.scale(0, factor);
+        image_.planes_.g1_.scale(0, factor);
+        image_.planes_.b_.scale(0, factor);
     }
 
     void write_png() {
         LOG("writing to: \""<<opt_.out_filename_<<"\"...");
-        int wd = planes_.r_.width_;
-        int ht = planes_.r_.height_;
+        int wd = image_.planes_.r_.width_;
+        int ht = image_.planes_.r_.height_;
         Png png;
         png.init(wd, ht);
         for (int y = 0; y < ht; ++y) {
             for (int x = 0; x < wd; ++x) {
-                int r = planes_.r_.get(x, y);
-                int g = planes_.g1_.get(x, y);
-                int b = planes_.b_.get(x, y);
+                int r = image_.planes_.r_.get(x, y);
+                int g = image_.planes_.g1_.get(x, y);
+                int b = image_.planes_.b_.get(x, y);
                 int idx = 3*x + y*png.stride_;
                 png.data_[idx] = pin_to_8bits(r);
                 png.data_[idx+1] = pin_to_8bits(g);
@@ -1124,9 +1032,8 @@ int save_as_png(
     int argc,
     clo_argv_t argv
 ) noexcept {
-    rs_log::init("rawsome.log");
 
-    Rawsome rawsome;
+    SaveAsPng rawsome;
     int exit_code = rawsome.run(argc, argv);
 
     return exit_code;
