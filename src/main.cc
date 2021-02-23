@@ -127,6 +127,13 @@ comet2: "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2"
 
 const int kFullySaturated = (1<<30)-1;
 
+const int kWidth = 640/2;
+const int kHeight = 360/2;
+const int kSize = kWidth * kHeight;
+const int kThreshold = 3000;
+const double kJupiterX = 103.5;
+const double kJupiterY = 76.5;
+
 class RggbPixel {
 public:
     int r_ = 0;
@@ -1117,19 +1124,20 @@ public:
         return x;
     }
 
-    static const int kWidth = 640/2;
-    static const int kHeight = 360/2;
-    static const int kSize = kWidth * kHeight;
+    Image stack_;
+    double jupiterx_ = 0.0;
+    double jupitery_ = 0.0;
 
     int special_stack() {
 
-        Image stack;
-        stack.init(kWidth, kHeight);
+        stack_.init(kWidth, kHeight);
 
         //const int kFirst = 873;
         //const int kLast = 882;
         const int kFirst = 884;
         const int kLast = 933;
+        //const int kLast = 886;
+        //const int kLast = 884;
         int count = 0;
         for (int i = kFirst; i <= kLast; ++i) {
             if (i == 890) {
@@ -1155,17 +1163,14 @@ public:
 
             //histogram();
             hack_crop();
+            find_jupiter();
 
             determine_saturation();
             //desaturate_pixels();
             scale_image();
 
-            for (int k = 0; k < kSize; ++k) {
-                stack.r_.samples_[k] += image_.r_.samples_[k];
-                stack.g1_.samples_[k] += image_.g1_.samples_[k];
-                stack.g2_.samples_[k] += image_.g2_.samples_[k];
-                stack.b_.samples_[k] += image_.b_.samples_[k];
-            }
+            shift_image();
+            stack_image();
 
             //adjust_dynamic_range();
             interpolate();
@@ -1180,18 +1185,30 @@ public:
         opt_.out_filename_  = "/home/timmer/Pictures/2020-12-22/stackable/stack.png";
         image_.init(kWidth, kHeight);
         for (int k = 0; k < kSize; ++k) {
-            image_.r_.samples_[k] = (stack.r_.samples_[k] + count/2) / count;
-            image_.g1_.samples_[k] = (stack.g1_.samples_[k] + count/2) / count;
-            image_.g2_.samples_[k] = (stack.g2_.samples_[k] + count/2) / count;
-            image_.b_.samples_[k] = (stack.b_.samples_[k] + count/2) / count;
+            image_.r_.samples_[k] = (stack_.r_.samples_[k] + count/2) / count;
+            image_.g1_.samples_[k] = (stack_.g1_.samples_[k] + count/2) / count;
+            image_.g2_.samples_[k] = (stack_.g2_.samples_[k] + count/2) / count;
+            image_.b_.samples_[k] = (stack_.b_.samples_[k] + count/2) / count;
         }
 
+        image_.crop(2, 2, kWidth-2, kHeight-2);
+
+        //opt_.drama_ = 1.1;
+        //opt_.window_ = 4;
         //adjust_dynamic_range();
-        interpolate();
+
+        //interpolate();
         combine_greens();
+
+        //opt_.linear_brightness_ = 40.0;
         convert_to_srgb();
+
         //enhance_colors();
+
+        opt_.gamma0_ = 10;
+        opt_.gamma1_ = 20.0;
         apply_gamma();
+
         scale_to_8bits();
         write_png();
 
@@ -1202,7 +1219,6 @@ public:
         int wd = image_.r_.width_;
         int ht = image_.r_.height_;
 
-        const int kThreshold = 3000;
         int maxx = 0;
         int maxy = 0;
         int minx = wd;
@@ -1276,6 +1292,137 @@ public:
             return 16384;
         }
         return x;
+    }
+
+    void find_jupiter() {
+        int wd = image_.r_.width_ / 2;
+        int ht = image_.r_.height_;
+        double sumx = 0;
+        double sumy = 0;
+        int sumw = 0;
+        for (int y = 0; y < ht; ++y) {
+            for (int x = 0; x < wd; ++x) {
+                int r = image_.r_.get(x, y);
+                int g1 = image_.g1_.get(x, y);
+                int g2 = image_.g2_.get(x, y);
+                int b = image_.b_.get(x, y);
+                r -= kThreshold;
+                g1 -= kThreshold;
+                g2 -= kThreshold;
+                b -= kThreshold;
+                if (r > 0) {
+                    sumx += (x + 0.25) * r;
+                    sumy += (y + 0.25) * r;
+                    sumw += r;
+                }
+                if (g1 > 0) {
+                    sumx += (x + 0.75) * g1;
+                    sumy += (y + 0.25) * g1;
+                    sumw += g1;
+                }
+                if (g2 > 0) {
+                    sumx += (x + 0.25) * g2;
+                    sumy += (y + 0.75) * g2;
+                    sumw += g2;
+                }
+                if (b > 0) {
+                    sumx += (x + 0.75) * b;
+                    sumy += (y + 0.75) * b;
+                    sumw += b;
+                }
+            }
+        }
+        jupiterx_ = sumx / double(sumw);
+        jupitery_ = sumy / double(sumw);
+        LOG("jupiter: "<<jupiterx_<<","<<jupitery_);
+    }
+
+    void shift_image() {
+        double dx = jupiterx_ - kJupiterX;
+        double dy = jupitery_ - kJupiterY;
+        LOG("dx="<<dx<<" dy="<<dy);
+
+        /**
+        interpolate the pixel at destination kJupiterX=103.5, kJupiterY=76.5.
+        the first problem is the coordinates of the source pixels are offset.
+        different amounts depending on which component.
+        the coordinates for the r samples are x+0.25, y+0.25 where x,y are integers.
+        the coordinates for the b samples are x+0.75, y+0.75.
+
+        dx is the amount we need to add to kJupiterX to get the center of the source pixel.
+        **/
+
+        shift_image(image_.r_,  dx-0.25);
+        shift_image(image_.g1_, dx+0.25);
+        shift_image(image_.g2_, dx+0.25);
+        shift_image(image_.b_,  dx-0.25);
+        image_.transpose();
+        shift_image(image_.r_,  dy-0.25);
+        shift_image(image_.g1_, dy-0.25);
+        shift_image(image_.g2_, dy+0.25);
+        shift_image(image_.b_,  dy+0.25);
+        image_.transpose();
+    }
+
+    void shift_image(
+        Plane &src,
+        double dx
+    ) {
+        int wd = src.width_;
+        int ht = src.height_;
+
+        Plane dst;
+        dst.init(wd, ht);
+
+        double pi = std::atan(1.0)*4.0;
+
+        for (int y = 0; y < ht; ++y) {
+            for (int x = 0; x < wd; ++x) {
+                int srcx = x + 0.5 + dx;
+                if (srcx < 2 || srcx >= wd-2) {
+                    continue;
+                }
+                int s0 = src.get(srcx - 1, y);
+                int s1 = src.get(srcx + 0, y);
+                int s2 = src.get(srcx + 1, y);
+                int s3 = src.get(srcx + 2, y);
+                double sa = (- s0 + 3*s1 + 3*s2 - s3 + 2.0) / 4.0;
+                double sb = s1;
+                double fraction = srcx - int(srcx);
+                if (fraction > 0.5) {
+                    sb = s2;
+                    fraction = 1.0 - fraction;
+                }
+                double w = std::sin(pi*fraction)*0.5 + 0.5;
+                double sc = w*sa + (1.0 - w)*sb;
+                dst.set(x, y, sc);
+
+                /*if (y == 103) {
+                    if (x >= 125-4 && x <= 125+5) {
+                        LOG("x="<<x<<" srcx="<<srcx<<" s0="<<s0<<" s1="<<s1<<" s2="<<s2<<" sa="<<sa<<" f="<<fraction<<" sb="<<sb<<" w="<<w<<" sc="<<sc);
+                    }
+                }*/
+            }
+        }
+
+        src = std::move(dst);
+    }
+
+    void stack_image() {
+        stack_image(stack_.r_, image_.r_);
+        stack_image(stack_.g1_, image_.g1_);
+        stack_image(stack_.g2_, image_.g2_);
+        stack_image(stack_.b_, image_.b_);
+    }
+
+    void stack_image(
+        Plane &dst,
+        Plane &src
+    ) {
+        int sz = dst.width_ * dst.height_;
+        for (int i = 0; i < sz; ++i) {
+            dst.samples_[i] += src.samples_[i];
+        }
     }
 };
 
