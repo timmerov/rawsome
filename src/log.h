@@ -2,6 +2,8 @@
 Copyright (C) 2012-2021 tim cotter. All rights reserved.
 */
 
+#pragma once
+
 /**
 log utilities and platform wrappers
 that should be part of the standard libraries
@@ -12,8 +14,6 @@ disable symbols browser.
 [Menu] Settings -> Editor... -> [Icon] Code Completion ->
     [Tab] Symbols Browser -> [Checkbox] Disable symbols browser
 **/
-
-#pragma once
 
 #include <cstdarg>
 #include <iostream>

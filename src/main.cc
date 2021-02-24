@@ -11,7 +11,6 @@ process images.
 #include "save_as_png.h"
 
 namespace {
-
 class Rawsome {
 public:
     Rawsome() = default;
@@ -61,8 +60,7 @@ public:
         LOG("further arguments are command dependent.");
     }
 };
-
-}
+} // anonymouse namespace
 
 int main(
     int argc,

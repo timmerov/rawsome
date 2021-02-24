@@ -2,6 +2,8 @@
 Copyright (C) 2012-2021 tim cotter. All rights reserved.
 */
 
+#pragma once
+
 /**
 data structures for image processing.
 **/
@@ -9,6 +11,7 @@ data structures for image processing.
 #include "planes.h"
 
 #include <ctime>
+#include <string>
 
 class CameraParams {
 public:

@@ -102,6 +102,7 @@ like maybe not illuminated?
 are they maybe literally camera noise?
 **/
 
+#include "canon.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
@@ -127,14 +128,6 @@ comet2: "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2"
 
 const int kFullySaturated = (1<<30)-1;
 
-class RggbPixel {
-public:
-    int r_ = 0;
-    int g1_ = 0;
-    int g2_ = 0;
-    int b_ = 0;
-};
-
 class Balance {
 public:
     double r_ = 1.0;
@@ -157,6 +150,9 @@ public:
     std::vector<int> histogram_;
     RggbPixel saturated_;
     Plane luminance_;
+    double lum_rx_ = 0.0;
+    double lum_gx_ = 0.0;
+    double lum_bx_ = 0.0;
     double auto_brightness_ = 0.0;
 
     int run(
@@ -175,7 +171,7 @@ public:
         }
 
         image_.camera_.print();
-        determine_black();
+        determine_black(image_, black_, noise_);
         crop_black();
         show_special_pixel();
         determine_saturation();
@@ -208,58 +204,6 @@ public:
         int g2 = planes_.g2_.get(x, y);
         int b = planes_.b_.get(x, y);
         LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
-    }
-
-    void determine_black() {
-        LOG("determining black...");
-        /**
-        the top rows and left columns of pixels are black.
-        also set the black noise level.
-        **/
-        noise_ = 0;
-        black_.r_ = determine_black(image_.planes_.r_);
-        black_.g1_ = determine_black(image_.planes_.g1_);
-        black_.g2_ = determine_black(image_.planes_.g2_);
-        black_.b_ = determine_black(image_.planes_.b_);
-        LOG("black is: "<<black_.r_<<" "<<black_.g1_<<" "<<black_.g2_<<" "<<black_.b_);
-
-        /** adjust noise for black levels. **/
-        int min_black = std::min(black_.r_, black_.g1_);
-        min_black = std::min(min_black, black_.g2_);
-        min_black = std::min(min_black, black_.b_);
-        noise_ -= min_black;
-        LOG("noise is: "<<noise_);
-    }
-
-    int determine_black(
-        Plane &plane
-    ) {
-        std::int64_t sum = 0;
-        /**
-        the left 37 columns are black.
-        the top 16 rows are black.
-        row 17 is garbage.
-        the rest of the pixels are the actual image.
-        **/
-        int top_count = 16 * plane.width_;
-        for (int y = 0; y < 16; ++y) {
-            for (int x = 0; x < plane.width_; ++x) {
-                int c = plane.get(x, y);
-                sum += c;
-                noise_ = std::max(noise_, c);
-            }
-        }
-
-        int left_count = 37 * (plane.height_ - 16);
-        for (int y = 16; y < plane.height_; ++y) {
-            for (int x = 0; x < 37; ++x) {
-                sum += plane.get(x, y);
-            }
-        }
-
-        int count = top_count + left_count;
-        int black = sum / count;
-        return black;
     }
 
     void crop_black() {
@@ -501,40 +445,11 @@ public:
         by Erik Reinhard Timo Kunkel Yoann Marion Kadi Bouatouch Jonathan Brouillat
         **/
 
-        /** convert canon rggb to srgb by multiplying by this matrix. **/
-        static double mat[3][3] = {
-            {+1.901824, -0.972035, +0.070211},
-            {-0.229410, +1.659384, -0.429974},
-            {+0.042001, -0.519143, +1.477141}
-        };
-
-        /** convert srgb to luminance by multiplying by this vector. **/
-        static double lum_vec[3] = { 0.2125, 0.7154, 0.0721};
-
-        /** combine them **/
-        double rx = mat[0][0]*lum_vec[0] + mat[0][1]*lum_vec[1] + mat[0][2]*lum_vec[2];
-        double gx = mat[1][0]*lum_vec[0] + mat[1][1]*lum_vec[1] + mat[1][2]*lum_vec[2];
-        double bx = mat[2][0]*lum_vec[0] + mat[2][1]*lum_vec[1] + mat[2][2]*lum_vec[2];
-
-        /** we still have two greens. **/
-        gx /= 2.0;
-
         /** compute luminance for all pixels. **/
-        int wd = image_.planes_.r_.width_;
-        int ht = image_.planes_.r_.height_;
-        luminance_.init(wd, ht);
-        int sz = wd * ht;
-        for (int i = 0; i < sz; ++i) {
-            int r = image_.planes_.r_.samples_[i];
-            int g1 = image_.planes_.g1_.samples_[i];
-            int g2 = image_.planes_.g2_.samples_[i];
-            int b = image_.planes_.b_.samples_[i];
-            int lum = r*rx + g1*gx + g2*gx + b*bx;
-            luminance_.samples_[i] = lum;
-        }
+        compute_luminance();
 
         /** compute the saturated luminance. **/
-        int sat_lum = saturated_.r_*rx + saturated_.g1_*gx + saturated_.g2_*gx + saturated_.b_*bx;
+        int sat_lum = saturated_.r_*lum_rx_ + saturated_.g1_*lum_gx_ + saturated_.g2_*lum_gx_ + saturated_.b_*lum_bx_;
 
         int window = 32;
         if (opt_.window_ > 0) {
@@ -560,6 +475,8 @@ public:
         double drama = opt_.drama_;
         LOG("dynamic range expansion factor: "<<drama);
 
+        int wd = luminance_.width_;
+        int ht = luminance_.height_;
         for (int y = 0; y < ht; ++y) {
             for (int x = 0; x < wd; ++x) {
                 int lum = luminance_.get(x, y);
@@ -598,6 +515,49 @@ public:
                 image_.planes_.g2_.set(x, y, g2);
                 image_.planes_.b_.set(x, y, b);
             }
+        }
+    }
+
+    void compute_luminance() {
+        /**
+        optionally used multiple places.
+        no sense computing luminance more than once.
+        **/
+        int wd = luminance_.width_;
+        int ht = luminance_.height_;
+        if (wd > 0 && ht > 0) {
+            return;
+        }
+
+        /** convert canon rggb to srgb by multiplying by this matrix. **/
+        static double mat[3][3] = {
+            {+1.901824, -0.972035, +0.070211},
+            {-0.229410, +1.659384, -0.429974},
+            {+0.042001, -0.519143, +1.477141}
+        };
+
+        /** convert srgb to luminance by multiplying by this vector. **/
+        static double lum_vec[3] = { 0.2125, 0.7154, 0.0721};
+
+        /** combine them **/
+        lum_rx_ = mat[0][0]*lum_vec[0] + mat[0][1]*lum_vec[1] + mat[0][2]*lum_vec[2];
+        lum_gx_ = mat[1][0]*lum_vec[0] + mat[1][1]*lum_vec[1] + mat[1][2]*lum_vec[2];
+        lum_bx_ = mat[2][0]*lum_vec[0] + mat[2][1]*lum_vec[1] + mat[2][2]*lum_vec[2];
+
+        /** we still have two greens. **/
+        lum_gx_ /= 2.0;
+
+        wd = image_.planes_.r_.width_;
+        ht = image_.planes_.r_.height_;
+        luminance_.init(wd, ht);
+        int sz = wd * ht;
+        for (int i = 0; i < sz; ++i) {
+            int r = image_.planes_.r_.samples_[i];
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            int b = image_.planes_.b_.samples_[i];
+            int lum = r*lum_rx_ + g1*lum_gx_ + g2*lum_gx_ + b*lum_bx_;
+            luminance_.samples_[i] = lum;
         }
     }
 
@@ -695,6 +655,8 @@ public:
 
         std::vector<int> histogram;
         histogram.resize(65536, 0);
+
+        compute_luminance();
 
         int wd = luminance_.width_;
         int ht = luminance_.height_;
