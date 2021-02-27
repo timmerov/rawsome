@@ -107,9 +107,6 @@ are they maybe literally camera noise?
 #include "image.h"
 #include "log.h"
 #include "options.h"
-#include "rs_png.h"
-
-#include <libraw/libraw.h>
 
 #include <cmath>
 #include <ctime>
@@ -128,7 +125,6 @@ public:
 
     Options opt_;
     Image image_;
-    std::vector<int> gamma_curve_;
     RggbPixel saturation_;
     std::vector<int> histogram_;
     RggbPixel saturated_;
@@ -173,7 +169,7 @@ public:
         apply_gamma();
         show_special_pixel();
         scale_to_8bits();
-        write_png();
+        image_.save_png(opt_.out_filename_.c_str());
         return 0;
     }
 
@@ -816,118 +812,12 @@ public:
         LOG("gamma correction: "<<ipwr<<" "<<ts);
 
         int white = 0x10000;
-        gamma_curve(pwr, ts, white);
-
-        apply_gamma(image_.planes_.r_);
-        apply_gamma(image_.planes_.g1_);
-        apply_gamma(image_.planes_.b_);
-    }
-
-    /** derived from dcraw. **/
-    void gamma_curve(
-        double pwr,
-        double ts,
-        int imax
-    ){
-        gamma_curve_.resize(0x10000);
-
-        #define SQR(x) ((x)*(x))
-        double g2 = 0.0;
-        double g3 = 0.0;
-        double g4 = 0.0;
-
-        double bnd[2] = {0.0, 0.0};
-        double r;
-
-        pwr = pwr;
-        ts = ts;
-        g2 = g3 = g4 = 0;
-        bnd[ts >= 1] = 1;
-        if ((ts-1)*(pwr-1) <= 0) {
-            for (int i = 0; i < 48; ++i) {
-                g2 = (bnd[0] + bnd[1])/2;
-                bnd[(std::pow(g2/ts,-pwr) - 1)/pwr - 1/g2 > -1] = g2;
-            }
-            g3 = g2 / ts;
-            g4 = g2 * (1/pwr - 1);
-        }
-        for (int i = 0; i < 0x10000; ++i) {
-            gamma_curve_[i] = 0xffff;
-            r = (double) i / imax;
-            if (r < 1) {
-                gamma_curve_[i] = 0x10000 * (r < g3 ? r*ts : std::pow(r,pwr)*(1+g4)-g4);
-            }
-        }
-
-        /*std::stringstream ss;
-        for (int i = 0; i < 0x10000; i += 0x100) {
-            ss<<gamma_curve_[i]<<" ";
-        }
-        LOG("gamma_curve=[ "<<ss.str()<<"]");*/
-    }
-
-    void apply_gamma(
-        Plane& plane
-    ) {
-        int sz = plane.width_ * plane.height_;
-        for (int i = 0; i < sz; ++i) {
-            int c = plane.samples_[i];
-            c = pin_to_16bits(c);
-            c = gamma_curve_[c];
-            plane.samples_[i] = c;
-        }
+        image_.planes_.apply_gamma(pwr, ts, white);
     }
 
     void scale_to_8bits() {
         LOG("scaling to 8 bits per sample..");
-        double factor = 255.0/65535.0;
-        image_.planes_.r_.multiply(factor);
-        image_.planes_.g1_.multiply(factor);
-        image_.planes_.b_.multiply(factor);
-    }
-
-    void write_png() {
-        LOG("writing to: \""<<opt_.out_filename_<<"\"...");
-        int wd = image_.planes_.r_.width_;
-        int ht = image_.planes_.r_.height_;
-        Png png;
-        png.init(wd, ht);
-        for (int y = 0; y < ht; ++y) {
-            for (int x = 0; x < wd; ++x) {
-                int r = image_.planes_.r_.get(x, y);
-                int g = image_.planes_.g1_.get(x, y);
-                int b = image_.planes_.b_.get(x, y);
-                int idx = 3*x + y*png.stride_;
-                png.data_[idx] = pin_to_8bits(r);
-                png.data_[idx+1] = pin_to_8bits(g);
-                png.data_[idx+2] = pin_to_8bits(b);
-            }
-        }
-        png.write(opt_.out_filename_.c_str());
-    }
-
-    int pin_to_8bits(
-        int x
-    ) {
-        if (x < 0) {
-            return 0;
-        }
-        if (x > 255) {
-            return 255;
-        }
-        return x;
-    }
-
-    int pin_to_16bits(
-        int x
-    ) {
-        if (x < 0) {
-            return 0;
-        }
-        if (x > 65535) {
-            return 65535;
-        }
-        return x;
+        image_.planes_.scale_to_8bits();
     }
 };
 

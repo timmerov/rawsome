@@ -64,4 +64,6 @@ public:
     int noise_ = 0;
 
     void load_raw(const char *filename);
+
+    void save_png(const char *filename);
 };

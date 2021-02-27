@@ -23,3 +23,6 @@ public:
     double g2_ = 1.0;
     double b_ = 1.0;
 };
+
+int pin_to_8bits(int x);
+int pin_to_16bits(int x);

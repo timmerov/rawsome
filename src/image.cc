@@ -7,10 +7,12 @@ data structures for image processing.
 **/
 
 #include "canon.h"
+#include "common.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
 #include "planes.h"
+#include "rs_png.h"
 
 #include <libraw/libraw.h>
 
@@ -131,4 +133,27 @@ void Image::load_raw(
 
     raw_image.recycle();
     is_loaded_ = true;
+}
+
+void Image::save_png(
+    const char *filename
+) {
+    LOG("saving to png: \""<<filename<<"\"...");
+
+    int wd = planes_.r_.width_;
+    int ht = planes_.r_.height_;
+    Png png;
+    png.init(wd, ht);
+    for (int y = 0; y < ht; ++y) {
+        for (int x = 0; x < wd; ++x) {
+            int r = planes_.r_.get(x, y);
+            int g = planes_.g1_.get(x, y);
+            int b = planes_.b_.get(x, y);
+            int idx = 3*x + y*png.stride_;
+            png.data_[idx] = pin_to_8bits(r);
+            png.data_[idx+1] = pin_to_8bits(g);
+            png.data_[idx+2] = pin_to_8bits(b);
+        }
+    }
+    png.write(filename);
 }

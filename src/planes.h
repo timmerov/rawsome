@@ -54,6 +54,13 @@ public:
     void gaussian(int n);
     void gaussian_horz(int n);
     void gaussian_horz_mt(int n);
+
+    /** apply gamma curve. **/
+    void apply_gamma(double pwr, double ts, int white);
+    void apply_gamma(std::vector<int> &curve);
+
+    /** scale to 8 bit values. **/
+    void scale_to_8bits();
 };
 
 class Planes {
@@ -77,6 +84,7 @@ public:
 
     /** multiply every pixel by factor. **/
     void multiply(RggbDouble &factor);
+    void multiply3(double factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);
@@ -86,4 +94,10 @@ public:
 
     /** interpolate intermediate horizontal pixels. **/
     void interpolate_horz_1331();
+
+    /** apply gamma. **/
+    void apply_gamma(double pwr, double ts, int white);
+
+    /** scale to 8 bit values. **/
+    void scale_to_8bits();
 };

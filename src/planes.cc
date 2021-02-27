@@ -6,12 +6,51 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 data structures for image processing.
 **/
 
+#include "common.h"
 #include "planes.h"
 
 #include <cmath>
 #include <thread>
 
 namespace {
+
+/** derived from dcraw. **/
+void gamma_curve(
+    std::vector<int> &curve,
+    double pwr,
+    double ts,
+    int imax
+){
+    curve.resize(0x10000);
+
+    #define SQR(x) ((x)*(x))
+    double g2 = 0.0;
+    double g3 = 0.0;
+    double g4 = 0.0;
+
+    double bnd[2] = {0.0, 0.0};
+    double r;
+
+    pwr = pwr;
+    ts = ts;
+    g2 = g3 = g4 = 0;
+    bnd[ts >= 1] = 1;
+    if ((ts-1)*(pwr-1) <= 0) {
+        for (int i = 0; i < 48; ++i) {
+            g2 = (bnd[0] + bnd[1])/2;
+            bnd[(std::pow(g2/ts,-pwr) - 1)/pwr - 1/g2 > -1] = g2;
+        }
+        g3 = g2 / ts;
+        g4 = g2 * (1/pwr - 1);
+    }
+    for (int i = 0; i < 0x10000; ++i) {
+        curve[i] = 0xffff;
+        r = (double) i / imax;
+        if (r < 1) {
+            curve[i] = 0x10000 * (r < g3 ? r*ts : std::pow(r,pwr)*(1+g4)-g4);
+        }
+    }
+}
 
 }
 
@@ -530,6 +569,33 @@ void Plane::gaussian_horz_mt(
     th7.join();
 }
 
+void Plane::apply_gamma(
+    double pwr,
+    double ts,
+    int white
+) {
+    std::vector<int> curve;
+    gamma_curve(curve, pwr, ts, white);
+    apply_gamma(curve);
+}
+
+void Plane::apply_gamma(
+    std::vector<int> &curve
+) {
+    int sz = width_ * height_;
+    for (int i = 0; i < sz; ++i) {
+        int c = samples_[i];
+        c = pin_to_16bits(c);
+        c = curve[c];
+        samples_[i] = c;
+    }
+}
+
+void Plane::scale_to_8bits() {
+    double factor = 255.0/65535.0;
+    multiply(factor);
+}
+
 Planes::Planes() {
 }
 
@@ -575,6 +641,14 @@ void Planes::multiply(
     b_.multiply(factor.b_);
 }
 
+void Planes::multiply3(
+    double factor
+) {
+    r_.multiply(factor);
+    g1_.multiply(factor);
+    b_.multiply(factor);
+}
+
 void Planes::crop(
     int left,
     int top,
@@ -599,4 +673,21 @@ void Planes::interpolate_horz_1331() {
     g1_.interpolate_horz_1331_mt();
     g2_.interpolate_horz_1331_mt();
     b_.interpolate_horz_1331_mt();
+}
+
+void Planes::apply_gamma(
+    double pwr,
+    double ts,
+    int white
+) {
+    std::vector<int> curve;
+    gamma_curve(curve, pwr, ts, white);
+    r_.apply_gamma(curve);
+    g1_.apply_gamma(curve);
+    b_.apply_gamma(curve);
+}
+
+void Planes::scale_to_8bits() {
+    double factor = 255.0/65535.0;
+    multiply3(factor);
 }
