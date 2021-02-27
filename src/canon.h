@@ -9,6 +9,6 @@ functions specific to canon.
 **/
 
 #include "common.h"
-#include "image.h"
+#include "planes.h"
 
-void determine_black(Image &image, RggbPixel &black, int &noise);
+void determine_black(Planes &planes, RggbPixel &black, int &noise);

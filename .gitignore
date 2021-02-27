@@ -10,3 +10,4 @@ bin/
 *.tiff
 *.ppm
 *.out
+*.CR2

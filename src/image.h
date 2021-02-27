@@ -61,6 +61,7 @@ public:
     bool is_loaded_ = false;
     CameraParams camera_;
     Planes planes_;
+    int noise_ = 0;
 
     void load_raw(const char *filename);
 };

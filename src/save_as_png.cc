@@ -128,14 +128,6 @@ comet2: "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2"
 
 const int kFullySaturated = (1<<30)-1;
 
-class Balance {
-public:
-    double r_ = 1.0;
-    double g1_ = 1.0;
-    double g2_ = 1.0;
-    double b_ = 1.0;
-};
-
 class SaveAsPng {
 public:
     SaveAsPng() = default;
@@ -143,8 +135,6 @@ public:
 
     Options opt_;
     Image image_;
-    RggbPixel black_;
-    int noise_;
     std::vector<int> gamma_curve_;
     RggbPixel saturation_;
     std::vector<int> histogram_;
@@ -171,7 +161,6 @@ public:
         }
 
         image_.camera_.print();
-        determine_black(image_, black_, noise_);
         crop_black();
         show_special_pixel();
         determine_saturation();
@@ -259,7 +248,7 @@ public:
         ie we need to find the thagomizer.
         **/
         const int kSatMax = 16383;
-        const int kSatExpected = 13583;
+        const int kSatExpected = 13583 - 2046; /** we need to subtract black. **/
         const int kSatDiff = kSatMax - kSatExpected;
         const int kSatSize = 2*kSatDiff;
         const int kSatThreshold = kSatMax - kSatSize;
@@ -361,7 +350,7 @@ public:
         normally, we would get the rggb camera multipliers from the raw_image.
         note order permutation.
         **/
-        Balance cam_mul;
+        RggbDouble cam_mul;
         if (opt_.wb_r_ > 0.0 && opt_.wb_b_ >= 0.0) {
             LOG("using user white balance...");
             cam_mul.r_ = opt_.wb_r_;
@@ -393,10 +382,10 @@ public:
         (16383 - black) * cam_mul_new = 1.0 = cam_mul_org
         cam_mul_new = cam_mul_org / (16383 - black)
         **/
-        cam_mul.r_ /= saturation_.r_ - black_.r_;
-        cam_mul.g1_ /= saturation_.g1_ - black_.g1_;
-        cam_mul.g2_ /= saturation_.g2_ - black_.g2_;
-        cam_mul.b_ /= saturation_.b_ - black_.b_;
+        cam_mul.r_ /= saturation_.r_;
+        cam_mul.g1_ /= saturation_.g1_;
+        cam_mul.g2_ /= saturation_.g2_;
+        cam_mul.b_ /= saturation_.b_;
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** adjust to span full 32 bit range. **/
@@ -406,17 +395,14 @@ public:
         cam_mul.b_ *= 65535.0;
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
-        /** subtract black and white balance. **/
-        image_.planes_.r_.scale(black_.r_, cam_mul.r_);
-        image_.planes_.g1_.scale(black_.g1_, cam_mul.g1_);
-        image_.planes_.g2_.scale(black_.g2_, cam_mul.g2_);
-        image_.planes_.b_.scale(black_.b_, cam_mul.b_);
+        /** white balance. **/
+        image_.planes_.multiply(cam_mul);
 
         /** update the saturated values. **/
-        saturated_.r_ = (saturated_.r_ - black_.r_) * cam_mul.r_;
-        saturated_.g1_ = (saturated_.g1_ - black_.g1_) * cam_mul.g1_;
-        saturated_.g2_ = (saturated_.g2_ - black_.g2_) * cam_mul.g2_;
-        saturated_.b_ = (saturated_.b_ - black_.b_) * cam_mul.b_;
+        saturated_.r_ *= cam_mul.r_;
+        saturated_.g1_ *= cam_mul.g1_;
+        saturated_.g2_ *= cam_mul.g2_;
+        saturated_.b_ *= cam_mul.b_;
         //LOG("saturated="<<saturated_.r_<<" "<<saturated_.g1_<<" "<<saturated_.g2_<<" "<<saturated_.b_);
     }
 
@@ -463,7 +449,7 @@ public:
         average.gaussian(window);
 
         /** expand the noise floor a bit. **/
-        int noise = noise_;
+        int noise = image_.noise_;
         if (opt_.noise_ > 0) {
             LOG("using user noise floor...");
             noise = opt_.noise_;
@@ -938,9 +924,9 @@ public:
     void scale_to_8bits() {
         LOG("scaling to 8 bits per sample..");
         double factor = 255.0/65535.0;
-        image_.planes_.r_.scale(0, factor);
-        image_.planes_.g1_.scale(0, factor);
-        image_.planes_.b_.scale(0, factor);
+        image_.planes_.r_.multiply(factor);
+        image_.planes_.g1_.multiply(factor);
+        image_.planes_.b_.multiply(factor);
     }
 
     void write_png() {
@@ -993,7 +979,7 @@ public:
 int save_as_png(
     int argc,
     clo_argv_t argv
-) noexcept {
+) {
 
     SaveAsPng rawsome;
     int exit_code = rawsome.run(argc, argv);

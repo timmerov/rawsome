@@ -8,6 +8,7 @@ data structures for image processing.
 
 #include "planes.h"
 
+#include <cmath>
 #include <thread>
 
 namespace {
@@ -48,18 +49,22 @@ int Plane::get(
     return value;
 }
 
-void Plane::scale(
-    int low,
+void Plane::subtract(
+    int delta
+) {
+    int sz = width_ * height_;
+    for (int i = 0; i < sz; ++i) {
+        samples_[i] -= delta;
+    }
+}
+
+void Plane::multiply(
     double factor
 ) {
     int sz = width_ * height_;
     for (int i = 0; i < sz; ++i) {
         int x = samples_[i];
-        x -= low;
-        if (x < 0) {
-            x = 0;
-        }
-        x = x * factor;
+        x = std::round(x * factor);
         samples_[i] = x;
     }
 }
@@ -539,6 +544,24 @@ void Planes::init(
     g1_.init(wd, ht);
     g2_.init(wd, ht);
     b_.init(wd, ht);
+}
+
+void Planes::subtract(
+    RggbPixel &delta
+) {
+    r_.subtract(delta.r_);
+    g1_.subtract(delta.g1_);
+    g2_.subtract(delta.g2_);
+    b_.subtract(delta.b_);
+}
+
+void Planes::multiply(
+    RggbDouble &factor
+) {
+    r_.multiply(factor.r_);
+    g1_.multiply(factor.g1_);
+    g2_.multiply(factor.g2_);
+    b_.multiply(factor.b_);
 }
 
 void Planes::crop(

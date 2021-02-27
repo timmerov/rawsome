@@ -9,6 +9,7 @@ process images.
 #include "cmd_line.h"
 #include "log.h"
 #include "save_as_png.h"
+#include "register.h"
 
 namespace {
 class Rawsome {
@@ -21,11 +22,12 @@ public:
         clo_argv_t argv
     ) {
         /** define the command line options. **/
-        const char *options_short = "?hp";
+        const char *options_short = "?hpr";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'h', "help"},
             {'p', "--save-as-png"},
+            {'r', "--register"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -48,6 +50,9 @@ public:
         case 'p':
             exit_code = save_as_png(argc-1, argv+1);
             break;
+        case 'r':
+            exit_code = register_two_images(argc-1, argv+1);
+            break;
         }
 
         return exit_code;
@@ -57,6 +62,7 @@ public:
         LOG("usage: rawsome command [...]");
         LOG("  -h, -?, --help    : show usage.");
         LOG("  -p, --save-as-png : save image file as png.");
+        LOG("  -r, --register    : register two images [experimental].");
         LOG("further arguments are command dependent.");
     }
 };

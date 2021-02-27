@@ -6,9 +6,11 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 data structures for image processing.
 **/
 
+#include "canon.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
+#include "planes.h"
 
 #include <libraw/libraw.h>
 
@@ -59,6 +61,7 @@ void copy_raw_to_planes(
         }
     }
 }
+
 } // anonymous namespace
 
 void CameraParams::print() {
@@ -121,6 +124,10 @@ void Image::load_raw(
     camera_.temperature_ = raw_image.imgdata.other.CameraTemperature;
 
     copy_raw_to_planes(raw_image, planes_);
+
+    RggbPixel black;
+    determine_black(planes_, black, noise_);
+    planes_.subtract(black);
 
     raw_image.recycle();
     is_loaded_ = true;

@@ -15,3 +15,11 @@ public:
     int g2_ = 0;
     int b_ = 0;
 };
+
+class RggbDouble {
+public:
+    double r_ = 1.0;
+    double g1_ = 1.0;
+    double g2_ = 1.0;
+    double b_ = 1.0;
+};

@@ -8,6 +8,8 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 data structures for image processing.
 **/
 
+#include "common.h"
+
 #include <vector>
 
 class Plane {
@@ -26,8 +28,11 @@ public:
     void set(int x, int y, int value);
     int get(int x, int y);
 
-    /** scale low to 0 and multiply by the factor. **/
-    void scale(int low, double factor);
+    /** reduce every sample by delta. **/
+    void subtract(int delta);
+
+    /** multiply every sample by factor. **/
+    void multiply(double factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);
@@ -63,6 +68,12 @@ public:
 
     /** initialize all of the planes. **/
     void init(int wd, int ht);
+
+    /** reduce every pixel by delta. **/
+    void subtract(RggbPixel &delta);
+
+    /** multiply every pixel by factor. **/
+    void multiply(RggbDouble &factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);

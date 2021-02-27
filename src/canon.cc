@@ -44,7 +44,7 @@ int determine_black(
 } // anonymous namespace
 
 void determine_black(
-    Image &image,
+    Planes &planes,
     RggbPixel &black,
     int &noise
 ) {
@@ -54,10 +54,10 @@ void determine_black(
     also set the black noise level.
     **/
     noise = 0;
-    black.r_ = determine_black(image.planes_.r_, noise);
-    black.g1_ = determine_black(image.planes_.g1_, noise);
-    black.g2_ = determine_black(image.planes_.g2_, noise);
-    black.b_ = determine_black(image.planes_.b_, noise);
+    black.r_ = determine_black(planes.r_, noise);
+    black.g1_ = determine_black(planes.g1_, noise);
+    black.g2_ = determine_black(planes.g2_, noise);
+    black.b_ = determine_black(planes.b_, noise);
     LOG("black is: "<<black.r_<<" "<<black.g1_<<" "<<black.g2_<<" "<<black.b_);
 
     /** adjust noise for black levels. **/
