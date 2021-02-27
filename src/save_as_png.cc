@@ -102,6 +102,7 @@ like maybe not illuminated?
 are they maybe literally camera noise?
 **/
 
+#include "canon.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
@@ -117,13 +118,6 @@ are they maybe literally camera noise?
 #include <sstream>
 
 namespace {
-
-/**
-moon:   "/home/timmer/Pictures/2020-05-12/moon/IMG_0393.CR2"
-santa:  "/home/timmer/Pictures/2021-01-29/santa.CR2"
-comet1: "/home/timmer/Pictures/2020-07-11/IMG_0480.CR2"
-comet2: "/home/timmer/Pictures/2020-07-11/IMG_0481.CR2"
-***/
 
 const int kFullySaturated = (1<<30)-1;
 
@@ -416,10 +410,18 @@ public:
         **/
 
         /** compute luminance for all pixels. **/
-        compute_luminance();
+        maybe_compute_luminance();
 
-        /** compute the saturated luminance. **/
-        int sat_lum = saturated_.r_*lum_rx_ + saturated_.g1_*lum_gx_ + saturated_.g2_*lum_gx_ + saturated_.b_*lum_bx_;
+        /**
+        compute the saturated luminance.
+        round-about-ed-ly.
+        **/
+        Planes satp;
+        satp.init(1, 1);
+        satp.set(0, 0, saturated_);
+        Plane satlum;
+        compute_luminance(satp, satlum);
+        int sat_lum = satlum.samples_[0];
 
         int window = 32;
         if (opt_.window_ > 0) {
@@ -488,7 +490,7 @@ public:
         }
     }
 
-    void compute_luminance() {
+    void maybe_compute_luminance() {
         /**
         optionally used multiple places.
         no sense computing luminance more than once.
@@ -499,36 +501,7 @@ public:
             return;
         }
 
-        /** convert canon rggb to srgb by multiplying by this matrix. **/
-        static double mat[3][3] = {
-            {+1.901824, -0.972035, +0.070211},
-            {-0.229410, +1.659384, -0.429974},
-            {+0.042001, -0.519143, +1.477141}
-        };
-
-        /** convert srgb to luminance by multiplying by this vector. **/
-        static double lum_vec[3] = { 0.2125, 0.7154, 0.0721};
-
-        /** combine them **/
-        lum_rx_ = mat[0][0]*lum_vec[0] + mat[0][1]*lum_vec[1] + mat[0][2]*lum_vec[2];
-        lum_gx_ = mat[1][0]*lum_vec[0] + mat[1][1]*lum_vec[1] + mat[1][2]*lum_vec[2];
-        lum_bx_ = mat[2][0]*lum_vec[0] + mat[2][1]*lum_vec[1] + mat[2][2]*lum_vec[2];
-
-        /** we still have two greens. **/
-        lum_gx_ /= 2.0;
-
-        wd = image_.planes_.r_.width_;
-        ht = image_.planes_.r_.height_;
-        luminance_.init(wd, ht);
-        int sz = wd * ht;
-        for (int i = 0; i < sz; ++i) {
-            int r = image_.planes_.r_.samples_[i];
-            int g1 = image_.planes_.g1_.samples_[i];
-            int g2 = image_.planes_.g2_.samples_[i];
-            int b = image_.planes_.b_.samples_[i];
-            int lum = r*lum_rx_ + g1*lum_gx_ + g2*lum_gx_ + b*lum_bx_;
-            luminance_.samples_[i] = lum;
-        }
+        compute_luminance(image_.planes_, luminance_);
     }
 
     void interpolate() {
@@ -626,7 +599,7 @@ public:
         std::vector<int> histogram;
         histogram.resize(65536, 0);
 
-        compute_luminance();
+        maybe_compute_luminance();
 
         int wd = luminance_.width_;
         int ht = luminance_.height_;

@@ -6,6 +6,7 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 register two source images.
 **/
 
+#include "canon.h"
 #include "image.h"
 #include "log.h"
 #include "register.h"
@@ -22,6 +23,8 @@ public:
 
     Image image1_;
     Image image2_;
+    Plane luminance1_;
+    Plane luminance2_;
 
     int run(
         int argc,
@@ -32,24 +35,20 @@ public:
 
         LOG("register two images - work in progress.");
 
-        load_image(kInputFile1, image1_);
+        image1_.load_raw(kInputFile1);
         if (image1_.is_loaded_ == false) {
             return 1;
         }
-        load_image(kInputFile2, image2_);
+        image2_.load_raw(kInputFile2);
         if (image2_.is_loaded_ == false) {
             return 1;
         }
 
+        compute_luminance(image1_.planes_, luminance1_);
+        compute_luminance(image2_.planes_, luminance2_);
+
         LOG("success.");
         return 0;
-    }
-
-    void load_image(
-        const char *filename,
-        Image &image
-    ) {
-        image.load_raw(filename);
     }
 };
 }

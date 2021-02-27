@@ -546,6 +546,17 @@ void Planes::init(
     b_.init(wd, ht);
 }
 
+void Planes::set(
+    int x,
+    int y,
+    RggbPixel p
+) {
+    r_.set(x, y, p.r_);
+    g1_.set(x, y, p.g1_);
+    g2_.set(x, y, p.g2_);
+    b_.set(x, y, p.b_);
+}
+
 void Planes::subtract(
     RggbPixel &delta
 ) {

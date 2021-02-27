@@ -69,6 +69,9 @@ public:
     /** initialize all of the planes. **/
     void init(int wd, int ht);
 
+    /** set the pixel **/
+    void set(int x, int y, RggbPixel p);
+
     /** reduce every pixel by delta. **/
     void subtract(RggbPixel &delta);
 
