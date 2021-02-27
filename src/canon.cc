@@ -67,3 +67,20 @@ void determine_black(
     noise -= min_black;
     LOG("noise is: "<<noise);
 }
+
+
+void crop_black(
+    Planes &planes
+) {
+    LOG("cropping black pixels...");
+    /**
+    the left 37 columns are black.
+    the top 16 rows are black.
+    row 17 is garbage.
+    the rest of the pixels are the actual image.
+    **/
+    /** left, top, right, bottom **/
+    planes.crop(38, 18, planes.r_.width_, planes.r_.height_);
+    LOG("cropped width ="<<planes.r_.width_);
+    LOG("cropped height="<<planes.r_.height_);
+}

@@ -12,3 +12,6 @@ functions specific to canon.
 #include "planes.h"
 
 void determine_black(Planes &planes, RggbPixel &black, int &noise);
+
+void crop_black(Planes &planes);
+

@@ -102,7 +102,6 @@ like maybe not illuminated?
 are they maybe literally camera noise?
 **/
 
-#include "canon.h"
 #include "dump.h"
 #include "image.h"
 #include "log.h"
@@ -161,7 +160,6 @@ public:
         }
 
         image_.camera_.print();
-        crop_black();
         show_special_pixel();
         determine_saturation();
         desaturate_pixels();
@@ -193,20 +191,6 @@ public:
         int g2 = planes_.g2_.get(x, y);
         int b = planes_.b_.get(x, y);
         LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
-    }
-
-    void crop_black() {
-        LOG("cropping black pixels...");
-        /**
-        the left 37 columns are black.
-        the top 16 rows are black.
-        row 17 is garbage.
-        the rest of the pixels are the actual image.
-        **/
-        /** left, top, right, bottom **/
-        image_.planes_.crop(38, 18, image_.planes_.r_.width_, image_.planes_.r_.height_);
-        LOG("cropped width ="<<image_.planes_.r_.width_);
-        LOG("cropped height="<<image_.planes_.r_.height_);
     }
 
     void determine_saturation() {
