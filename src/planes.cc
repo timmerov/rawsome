@@ -70,7 +70,28 @@ void interpolate_horz_1331_thread(
             c1 = c2;
             c2 = c3;
             c3 = src->get(x, y);
-            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+            /**
+            r is the midpoint of segment c1.c2.
+            s is the extrapolated value of segment c0.c1.
+            t is the extrapolated value of segment c2.c3.
+            if s,t are both greater than r...
+            or s,t are both smaller than r...
+            then average r with the closer of s,t.
+            otherwise use r.
+            **/
+            int r = c1 + c2;
+            int s = 3*c1 - c0;
+            int t = 3*c2 - c3;
+            int new_c;
+            if (s >= r && t >= r) {
+                s = std::min(s, t);
+                new_c = (r + s + 2) / 4;
+            } else if (s <= r && t <= r) {
+                s = std::max(s, t);
+                new_c = (r + s + 2) / 4;
+            } else {
+                new_c = (r + 1) / 2;
+            }
             dst->set(dstx, y, c1);
             dst->set(dstx+1, y, new_c);
             dstx += 2;
@@ -113,7 +134,27 @@ void interpolate_horz_1331_sat_thread(
             }
             int new_c;
             if (bits == 0) {
-                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+                /**
+                r is the midpoint of segment c1.c2.
+                s is the extrapolated value of segment c0.c1.
+                t is the extrapolated value of segment c2.c3.
+                if s,t are both greater than r...
+                or s,t are both smaller than r...
+                then average r with the closer of s,t.
+                otherwise use r.
+                **/
+                int r = c1 + c2;
+                int s = 3*c1 - c0;
+                int t = 3*c2 - c3;
+                if (s >= r && t >= r) {
+                    s = std::min(s, t);
+                    new_c = (r + s + 2) / 4;
+                } else if (s <= r && t <= r) {
+                    s = std::max(s, t);
+                    new_c = (r + s + 2) / 4;
+                } else {
+                    new_c = (r + 1) / 2;
+                }
             } else {
                 int mid_bits = bits & (2|4);
                 switch (mid_bits) {
