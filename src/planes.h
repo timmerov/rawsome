@@ -41,11 +41,17 @@ public:
     void transpose();
     void transpose_mt();
 
+    /** interpolate intermediate pixels. **/
+    void interpolate_1331();
+    void interpolate_1331_sat();
+    void interpolate_1331_mt();
+    void interpolate_1331_sat_mt();
+
     /** interpolate intermediate horizontal pixels. **/
     void interpolate_horz_1331();
-    void interpolate_horz_1331(int sat);
+    void interpolate_horz_1331_sat();
     void interpolate_horz_1331_mt();
-    void interpolate_horz_1331_mt(int sat);
+    void interpolate_horz_1331_sat_mt();
 
     /** downsample by 2x. **/
     void downsample(Plane &src);
@@ -93,8 +99,9 @@ public:
     /** transpose the image. **/
     void transpose();
 
-    /** interpolate intermediate horizontal pixels. **/
-    void interpolate_horz_1331();
+    /** interpolate intermediate pixels. **/
+    void interpolate_1331();
+    void interpolate_1331_sat();
 
     /** apply gamma. **/
     void apply_gamma(double pwr, double ts, int white);

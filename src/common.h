@@ -8,6 +8,8 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 common classes.
 **/
 
+const int kSaturated = 0x40000000;
+
 class RggbPixel {
 public:
     int r_ = 0;

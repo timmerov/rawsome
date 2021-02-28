@@ -52,6 +52,94 @@ void gamma_curve(
     }
 }
 
+void interpolate_horz_1331_thread(
+    Plane *src,
+    Plane *dst,
+    int y0,
+    int dy
+) {
+    int ht = src->height_;
+    int wd = src->width_;
+    for (int y = y0; y < ht; y += dy) {
+        int c1 = src->get(0, y);
+        int c2 = src->get(1, y);
+        int c3 = src->get(2, y);
+        int dstx = 0;
+        for (int x = 3; x < wd; ++x) {
+            int c0 = c1;
+            c1 = c2;
+            c2 = c3;
+            c3 = src->get(x, y);
+            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+            dst->set(dstx, y, c1);
+            dst->set(dstx+1, y, new_c);
+            dstx += 2;
+        }
+        dst->set(dstx, y, c2);
+    }
+}
+
+void interpolate_horz_1331_sat_thread(
+    Plane *src,
+    Plane *dst,
+    int y0,
+    int dy
+) {
+    int ht = src->height_;
+    int wd = src->width_;
+    for (int y = y0; y < ht; y += dy) {
+        int c1 = src->get(0, y);
+        int c2 = src->get(1, y);
+        int c3 = src->get(2, y);
+        int bits = 0;
+        if (c1 >= kSaturated) {
+            bits |= 2;
+        }
+        if (c2 >= kSaturated) {
+            bits |= 4;
+        }
+        if (c3 >= kSaturated) {
+            bits |= 8;
+        }
+        int dstx = 0;
+        for (int x = 3; x < wd; ++x) {
+            int c0 = c1;
+            c1 = c2;
+            c2 = c3;
+            c3 = src->get(x, y);
+            bits >>= 1;
+            if (c3 >= kSaturated) {
+                bits |= 8;
+            }
+            int new_c;
+            if (bits == 0) {
+                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+            } else {
+                int mid_bits = bits & (2|4);
+                switch (mid_bits) {
+                default:
+                case 0:
+                    new_c = (c1 + c2 + 1) / 2;
+                    break;
+                case 2:
+                    new_c = c2;
+                    break;
+                case 4:
+                    new_c = c1;
+                    break;
+                case 2+4:
+                    new_c = kSaturated;
+                    break;
+                }
+            }
+            dst->set(dstx, y, c1);
+            dst->set(dstx+1, y, new_c);
+            dstx += 2;
+        }
+        dst->set(dstx, y, c2);
+    }
+}
+
 }
 
 Plane::Plane() {
@@ -179,241 +267,51 @@ void Plane::transpose_mt() {
     *this = std::move(dst);
 }
 
+void Plane::interpolate_1331() {
+    transpose();
+    interpolate_horz_1331();
+    transpose();
+    interpolate_horz_1331();
+}
+
+void Plane::interpolate_1331_sat() {
+    transpose();
+    interpolate_horz_1331_sat();
+    transpose();
+    interpolate_horz_1331_sat();
+}
+
+void Plane::interpolate_1331_mt() {
+    transpose_mt();
+    interpolate_horz_1331_mt();
+    transpose_mt();
+    interpolate_horz_1331_mt();
+}
+
+void Plane::interpolate_1331_sat_mt() {
+    transpose_mt();
+    interpolate_horz_1331_sat_mt();
+    transpose_mt();
+    interpolate_horz_1331_sat_mt();
+}
+
 void Plane::interpolate_horz_1331() {
-    /**
-    given N pixels: a b c d ... w x y z
-    we are going to output: b m c m d ... w m x m y
-    where n are newly interpolated pixels.
-    we are going to discard the left-most and right-most pixels.
-    we will have N-2 (b-y) + N-3 = 2N-5 pixels.
-    **/
     int new_wd = 2*width_ - 5;
     Plane dst;
     dst.init(new_wd, height_);
-    for (int y = 0; y < height_; ++y) {
-        int c1 = get(0, y);
-        int c2 = get(1, y);
-        int c3 = get(2, y);
-        int dstx = 0;
-        for (int x = 3; x < width_; ++x) {
-            int c0 = c1;
-            c1 = c2;
-            c2 = c3;
-            c3 = get(x, y);
-            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
-            dst.set(dstx, y, c1);
-            dst.set(dstx+1, y, new_c);
-            dstx += 2;
-        }
-        dst.set(dstx, y, c2);
-    }
+    interpolate_horz_1331_thread(this, &dst, 0, 1);
     *this = std::move(dst);
 }
 
-namespace {
-void interpolate_horz_1331_sat_thread(
-    Plane *src,
-    Plane *dst,
-    int sat,
-    int y0,
-    int dy
-) {
-    int ht = src->height_;
-    int wd = src->width_;
-    for (int y = y0; y < ht; y += dy) {
-        int c1 = src->get(0, y);
-        int c2 = src->get(1, y);
-        int c3 = src->get(2, y);
-        int bits = 0;
-        if (c1 >= sat) {
-            bits |= 2;
-        }
-        if (c2 >= sat) {
-            bits |= 4;
-        }
-        if (c3 >= sat) {
-            bits |= 8;
-        }
-        int dstx = 0;
-        for (int x = 3; x < wd; ++x) {
-            int c0 = c1;
-            c1 = c2;
-            c2 = c3;
-            c3 = src->get(x, y);
-            bits >>= 1;
-            if (c3 >= sat) {
-                bits |= 8;
-            }
-            int new_c;
-            if (bits == 0) {
-                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
-                new_c = std::min(new_c, sat-1);
-            } else {
-                int mid_bits = bits & (2|4);
-                switch (mid_bits) {
-                default:
-                case 0:
-                    new_c = (c1 + c2 + 1) / 2;
-                    new_c = std::min(new_c, sat-1);
-                    break;
-                case 2:
-                    new_c = c2;
-                    break;
-                case 4:
-                    new_c = c1;
-                    break;
-                case 2+4:
-                    new_c = sat;
-                    break;
-                }
-            }
-            dst->set(dstx, y, c1);
-            dst->set(dstx+1, y, new_c);
-            dstx += 2;
-        }
-        dst->set(dstx, y, c2);
-    }
-}
-}
-
-void Plane::interpolate_horz_1331_mt(
-    int sat
-) {
-    /**
-    given N pixels: a b c d ... w x y z
-    we are going to output: b m c m d ... w m x m y
-    where n are newly interpolated pixels.
-    we are going to discard the left-most and right-most pixels.
-    we will have N-2 (b-y) + N-3 = 2N-5 pixels.
-    **/
+void Plane::interpolate_horz_1331_sat() {
     int new_wd = 2*width_ - 5;
     Plane dst;
     dst.init(new_wd, height_);
-    std::thread th0(interpolate_horz_1331_sat_thread, this, &dst, sat, 0, 8);
-    std::thread th1(interpolate_horz_1331_sat_thread, this, &dst, sat, 1, 8);
-    std::thread th2(interpolate_horz_1331_sat_thread, this, &dst, sat, 2, 8);
-    std::thread th3(interpolate_horz_1331_sat_thread, this, &dst, sat, 3, 8);
-    std::thread th4(interpolate_horz_1331_sat_thread, this, &dst, sat, 4, 8);
-    std::thread th5(interpolate_horz_1331_sat_thread, this, &dst, sat, 5, 8);
-    std::thread th6(interpolate_horz_1331_sat_thread, this, &dst, sat, 6, 8);
-    std::thread th7(interpolate_horz_1331_sat_thread, this, &dst, sat, 7, 8);
-    th0.join();
-    th1.join();
-    th2.join();
-    th3.join();
-    th4.join();
-    th5.join();
-    th6.join();
-    th7.join();
+    interpolate_horz_1331_sat_thread(this, &dst, 0, 1);
     *this = std::move(dst);
-}
-
-void Plane::interpolate_horz_1331(
-    int sat
-) {
-    /**
-    given N pixels: a b c d ... w x y z
-    we are going to output: b m c m d ... w m x m y
-    where n are newly interpolated pixels.
-    we are going to discard the left-most and right-most pixels.
-    we will have N-2 (b-y) + N-3 = 2N-5 pixels.
-    **/
-    int new_wd = 2*width_ - 5;
-    Plane dst;
-    dst.init(new_wd, height_);
-    for (int y = 0; y < height_; ++y) {
-        int c1 = get(0, y);
-        int c2 = get(1, y);
-        int c3 = get(2, y);
-        int bits = 0;
-        if (c1 >= sat) {
-            bits |= 2;
-        }
-        if (c2 >= sat) {
-            bits |= 4;
-        }
-        if (c3 >= sat) {
-            bits |= 8;
-        }
-        int dstx = 0;
-        for (int x = 3; x < width_; ++x) {
-            int c0 = c1;
-            c1 = c2;
-            c2 = c3;
-            c3 = get(x, y);
-            bits >>= 1;
-            if (c3 >= sat) {
-                bits |= 8;
-            }
-            int new_c;
-            if (bits == 0) {
-                new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
-                new_c = std::min(new_c, sat-1);
-            } else {
-                int mid_bits = bits & (2|4);
-                switch (mid_bits) {
-                default:
-                case 0:
-                    new_c = (c1 + c2 + 1) / 2;
-                    new_c = std::min(new_c, sat-1);
-                    break;
-                case 2:
-                    new_c = c2;
-                    break;
-                case 4:
-                    new_c = c1;
-                    break;
-                case 2+4:
-                    new_c = sat;
-                    break;
-                }
-            }
-            dst.set(dstx, y, c1);
-            dst.set(dstx+1, y, new_c);
-            dstx += 2;
-        }
-        dst.set(dstx, y, c2);
-    }
-    *this = std::move(dst);
-}
-
-namespace {
-void interpolate_horz_1331_thread(
-    Plane *src,
-    Plane *dst,
-    int y0,
-    int dy
-) {
-    int ht = src->height_;
-    int wd = src->width_;
-    for (int y = y0; y < ht; y += dy) {
-        int c1 = src->get(0, y);
-        int c2 = src->get(1, y);
-        int c3 = src->get(2, y);
-        int dstx = 0;
-        for (int x = 3; x < wd; ++x) {
-            int c0 = c1;
-            c1 = c2;
-            c2 = c3;
-            c3 = src->get(x, y);
-            int new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
-            dst->set(dstx, y, c1);
-            dst->set(dstx+1, y, new_c);
-            dstx += 2;
-        }
-        dst->set(dstx, y, c2);
-    }
-}
 }
 
 void Plane::interpolate_horz_1331_mt() {
-    /**
-    given N pixels: a b c d ... w x y z
-    we are going to output: b m c m d ... w m x m y
-    where n are newly interpolated pixels.
-    we are going to discard the left-most and right-most pixels.
-    we will have N-2 (b-y) + N-3 = 2N-5 pixels.
-    **/
     int new_wd = 2*width_ - 5;
     Plane dst;
     dst.init(new_wd, height_);
@@ -425,6 +323,29 @@ void Plane::interpolate_horz_1331_mt() {
     std::thread th5(interpolate_horz_1331_thread, this, &dst, 5, 8);
     std::thread th6(interpolate_horz_1331_thread, this, &dst, 6, 8);
     std::thread th7(interpolate_horz_1331_thread, this, &dst, 7, 8);
+    th0.join();
+    th1.join();
+    th2.join();
+    th3.join();
+    th4.join();
+    th5.join();
+    th6.join();
+    th7.join();
+    *this = std::move(dst);
+}
+
+void Plane::interpolate_horz_1331_sat_mt() {
+    int new_wd = 2*width_ - 5;
+    Plane dst;
+    dst.init(new_wd, height_);
+    std::thread th0(interpolate_horz_1331_sat_thread, this, &dst, 0, 8);
+    std::thread th1(interpolate_horz_1331_sat_thread, this, &dst, 1, 8);
+    std::thread th2(interpolate_horz_1331_sat_thread, this, &dst, 2, 8);
+    std::thread th3(interpolate_horz_1331_sat_thread, this, &dst, 3, 8);
+    std::thread th4(interpolate_horz_1331_sat_thread, this, &dst, 4, 8);
+    std::thread th5(interpolate_horz_1331_sat_thread, this, &dst, 5, 8);
+    std::thread th6(interpolate_horz_1331_sat_thread, this, &dst, 6, 8);
+    std::thread th7(interpolate_horz_1331_sat_thread, this, &dst, 7, 8);
     th0.join();
     th1.join();
     th2.join();
@@ -683,11 +604,25 @@ void Planes::transpose() {
     b_.transpose_mt();
 }
 
-void Planes::interpolate_horz_1331() {
-    r_.interpolate_horz_1331_mt();
-    g1_.interpolate_horz_1331_mt();
-    g2_.interpolate_horz_1331_mt();
-    b_.interpolate_horz_1331_mt();
+void Planes::interpolate_1331() {
+    /**
+    applying the 1331 filter is really fast for horizontal pixels.
+    so we transpose while small.
+    add pixels horizontally.
+    tanspose again while medium sized.
+    add pixels horizontally again.
+    **/
+    r_.interpolate_1331();
+    g1_.interpolate_1331();
+    g2_.interpolate_1331();
+    b_.interpolate_1331();
+}
+
+void Planes::interpolate_1331_sat() {
+    r_.interpolate_1331_sat();
+    g1_.interpolate_1331_sat();
+    g2_.interpolate_1331_sat();
+    b_.interpolate_1331_sat();
 }
 
 void Planes::apply_gamma(

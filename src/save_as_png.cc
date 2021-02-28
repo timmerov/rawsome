@@ -126,7 +126,6 @@ public:
     Options opt_;
     Image image_;
     int saturation_;
-    int saturated_;
     std::vector<int> histogram_;
     Plane luminance_;
     double lum_rx_ = 0.0;
@@ -203,9 +202,6 @@ public:
         }
 
         LOG("saturation is: "<<saturation_);
-
-        /** the fully saturated values will be modified. **/
-        saturated_ = saturation_;
     }
 
     int determine_saturation(
@@ -296,14 +292,14 @@ public:
             int g1 = image_.planes_.g1_.samples_[i];
             int g2 = image_.planes_.g2_.samples_[i];
             int b = image_.planes_.b_.samples_[i];
-            if (r >= saturated_
-            ||  g1 >= saturated_
-            ||  g2 >= saturated_
-            ||  b >= saturated_) {
-                image_.planes_.r_.samples_[i] = saturated_;
-                image_.planes_.g1_.samples_[i] = saturated_;
-                image_.planes_.g2_.samples_[i] = saturated_;
-                image_.planes_.b_.samples_[i] = saturated_;
+            if (r >= kSaturated
+            ||  g1 >= kSaturated
+            ||  g2 >= kSaturated
+            ||  b >= kSaturated) {
+                image_.planes_.r_.samples_[i] = kSaturated;
+                image_.planes_.g1_.samples_[i] = kSaturated;
+                image_.planes_.g2_.samples_[i] = kSaturated;
+                image_.planes_.b_.samples_[i] = kSaturated;
                 ++count;
             }
         }
@@ -371,13 +367,6 @@ public:
 
         /** white balance. **/
         image_.planes_.multiply(cam_mul);
-
-        /** update the saturated values. **/
-        double max_mul = std::max(cam_mul.r_, cam_mul.g1_);
-        max_mul = std::max(max_mul, cam_mul.g2_);
-        max_mul = std::max(max_mul, cam_mul.b_);
-        saturated_ = std::ceil(saturated_ * max_mul);
-        //LOG("saturated="<<saturated_);
     }
 
     void adjust_dynamic_range() {
@@ -407,17 +396,6 @@ public:
 
         /** compute luminance for all pixels. **/
         maybe_compute_luminance();
-
-        /**
-        compute the saturated luminance.
-        round-about-ed-ly.
-        **/
-        Planes satp;
-        satp.init(1, 1);
-        satp.set(0, 0, saturated_);
-        Plane satlum;
-        compute_luminance(satp, satlum);
-        int sat_lum = satlum.samples_[0];
 
         int window = 32;
         if (opt_.window_ > 0) {
@@ -454,7 +432,7 @@ public:
                     continue;
                 }
                 /** ignore pixels below the noise floor and above the saturation level. **/
-                if (lum >= sat_lum) {
+                if (lum >= kSaturated) {
                     continue;
                 }
 
@@ -533,10 +511,7 @@ public:
         tanspose again while medium sized.
         add pixels horizontally again.
         **/
-        image_.planes_.transpose();
-        interpolate_horz_1331();
-        image_.planes_.transpose();
-        interpolate_horz_1331();
+        image_.planes_.interpolate_1331_sat();
 
         /**
         at this point we have alignment issues.
@@ -566,13 +541,6 @@ public:
 
         /** redo-desaturation after crop-shifting. **/
         desaturate_pixels();
-    }
-
-    void interpolate_horz_1331() {
-        image_.planes_.r_.interpolate_horz_1331_mt(saturated_);
-        image_.planes_.g1_.interpolate_horz_1331_mt(saturated_);
-        image_.planes_.g2_.interpolate_horz_1331_mt(saturated_);
-        image_.planes_.b_.interpolate_horz_1331_mt(saturated_);
     }
 
     void combine_greens() {
@@ -672,9 +640,9 @@ public:
             double out_b;
 
             /** ensure saturated pixels stay saturated. **/
-            if (in_r >= saturated_
-            &&  in_g >= saturated_
-            &&  in_b >= saturated_) {
+            if (in_r >= kSaturated
+            &&  in_g >= kSaturated
+            &&  in_b >= kSaturated) {
                 out_r = 65535.0;
                 out_g = 65535.0;
                 out_b = 65535.0;
@@ -743,9 +711,9 @@ public:
             double out_b;
 
             /** ensure saturated pixels stay saturated. **/
-            if (in_r >= saturated_
-            &&  in_g >= saturated_
-            &&  in_b >= saturated_) {
+            if (in_r >= kSaturated
+            &&  in_g >= kSaturated
+            &&  in_b >= kSaturated) {
                 out_r = 65535.0;
                 out_g = 65535.0;
                 out_b = 65535.0;
