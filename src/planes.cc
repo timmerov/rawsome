@@ -196,6 +196,19 @@ void Plane::multiply(
     }
 }
 
+void Plane::multiply_sat(
+    double factor
+) {
+    int sz = width_ * height_;
+    for (int i = 0; i < sz; ++i) {
+        int x = samples_[i];
+        if (x < kSaturated) {
+            x = std::round(x * factor);
+        }
+        samples_[i] = x;
+    }
+}
+
 void Plane::crop(
     int left,
     int top,
@@ -575,6 +588,15 @@ void Planes::multiply(
     g1_.multiply(factor.g1_);
     g2_.multiply(factor.g2_);
     b_.multiply(factor.b_);
+}
+
+void Planes::multiply_sat(
+    RggbDouble &factor
+) {
+    r_.multiply_sat(factor.r_);
+    g1_.multiply_sat(factor.g1_);
+    g2_.multiply_sat(factor.g2_);
+    b_.multiply_sat(factor.b_);
 }
 
 void Planes::multiply3(

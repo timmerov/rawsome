@@ -366,7 +366,7 @@ public:
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** white balance. **/
-        image_.planes_.multiply(cam_mul);
+        image_.planes_.multiply_sat(cam_mul);
     }
 
     void adjust_dynamic_range() {

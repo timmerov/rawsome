@@ -33,6 +33,7 @@ public:
 
     /** multiply every sample by factor. **/
     void multiply(double factor);
+    void multiply_sat(double factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);
@@ -91,6 +92,7 @@ public:
 
     /** multiply every pixel by factor. **/
     void multiply(RggbDouble &factor);
+    void multiply_sat(RggbDouble &factor);
     void multiply3(double factor);
 
     /** crop to rectangle **/
