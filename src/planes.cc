@@ -247,12 +247,14 @@ void interpolate_horz_1331_sat_thread(
             int new_c;
             if (bits == 0) {
                 new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+                new_c = std::min(new_c, sat-1);
             } else {
                 int mid_bits = bits & (2|4);
                 switch (mid_bits) {
                 default:
                 case 0:
                     new_c = (c1 + c2 + 1) / 2;
+                    new_c = std::min(new_c, sat-1);
                     break;
                 case 2:
                     new_c = c2;
@@ -346,12 +348,14 @@ void Plane::interpolate_horz_1331(
             int new_c;
             if (bits == 0) {
                 new_c = (- c0 + 3*c1 + 3*c2 - c3 + 2) / 4;
+                new_c = std::min(new_c, sat-1);
             } else {
                 int mid_bits = bits & (2|4);
                 switch (mid_bits) {
                 default:
                 case 0:
                     new_c = (c1 + c2 + 1) / 2;
+                    new_c = std::min(new_c, sat-1);
                     break;
                 case 2:
                     new_c = c2;
@@ -621,6 +625,17 @@ void Planes::set(
     g1_.set(x, y, p.g1_);
     g2_.set(x, y, p.g2_);
     b_.set(x, y, p.b_);
+}
+
+void Planes::set(
+    int x,
+    int y,
+    int value
+) {
+    r_.set(x, y, value);
+    g1_.set(x, y, value);
+    g2_.set(x, y, value);
+    b_.set(x, y, value);
 }
 
 void Planes::subtract(

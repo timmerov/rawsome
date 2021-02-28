@@ -125,9 +125,9 @@ public:
 
     Options opt_;
     Image image_;
-    RggbPixel saturation_;
+    int saturation_;
+    int saturated_;
     std::vector<int> histogram_;
-    RggbPixel saturated_;
     Plane luminance_;
     double lum_rx_ = 0.0;
     double lum_gx_ = 0.0;
@@ -188,21 +188,21 @@ public:
 
         if (opt_.saturation_ > 0) {
             LOG("using user saturation...");
-            saturation_.r_ = opt_.saturation_;
-            saturation_.g1_ = opt_.saturation_;
-            saturation_.g2_ = opt_.saturation_;
-            saturation_.b_ = opt_.saturation_;
+            saturation_ = opt_.saturation_;
         } else {
             /**
             the camera sensor saturates at less than the maximum value.
             **/
-            saturation_.r_ = determine_saturation(image_.planes_.r_);
-            saturation_.g1_ = determine_saturation(image_.planes_.g1_);
-            saturation_.g2_ = determine_saturation(image_.planes_.g2_);
-            saturation_.b_ = determine_saturation(image_.planes_.b_);
+            int satr = determine_saturation(image_.planes_.r_);
+            int satg1 = determine_saturation(image_.planes_.g1_);
+            int satg2 = determine_saturation(image_.planes_.g2_);
+            int satb = determine_saturation(image_.planes_.b_);
+            saturation_ = std::max(satr, satg1);
+            saturation_ = std::max(saturation_, satg2);
+            saturation_ = std::max(saturation_, satb);
         }
 
-        LOG("saturation is: "<<saturation_.r_<<" "<<saturation_.g1_<<" "<<saturation_.g2_<<" "<<saturation_.b_);
+        LOG("saturation is: "<<saturation_);
 
         /** the fully saturated values will be modified. **/
         saturated_ = saturation_;
@@ -296,14 +296,14 @@ public:
             int g1 = image_.planes_.g1_.samples_[i];
             int g2 = image_.planes_.g2_.samples_[i];
             int b = image_.planes_.b_.samples_[i];
-            if (r >= saturated_.r_
-            ||  g1 >= saturated_.g1_
-            ||  g2 >= saturated_.g2_
-            ||  b >= saturated_.b_) {
-                image_.planes_.r_.samples_[i] = saturated_.r_;
-                image_.planes_.g1_.samples_[i] = saturated_.g1_;
-                image_.planes_.g2_.samples_[i] = saturated_.g2_;
-                image_.planes_.b_.samples_[i] = saturated_.b_;
+            if (r >= saturated_
+            ||  g1 >= saturated_
+            ||  g2 >= saturated_
+            ||  b >= saturated_) {
+                image_.planes_.r_.samples_[i] = saturated_;
+                image_.planes_.g1_.samples_[i] = saturated_;
+                image_.planes_.g2_.samples_[i] = saturated_;
+                image_.planes_.b_.samples_[i] = saturated_;
                 ++count;
             }
         }
@@ -356,10 +356,10 @@ public:
         (16383 - black) * cam_mul_new = 1.0 = cam_mul_org
         cam_mul_new = cam_mul_org / (16383 - black)
         **/
-        cam_mul.r_ /= saturation_.r_;
-        cam_mul.g1_ /= saturation_.g1_;
-        cam_mul.g2_ /= saturation_.g2_;
-        cam_mul.b_ /= saturation_.b_;
+        cam_mul.r_ /= saturation_;
+        cam_mul.g1_ /= saturation_;
+        cam_mul.g2_ /= saturation_;
+        cam_mul.b_ /= saturation_;
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** adjust to span full 32 bit range. **/
@@ -373,11 +373,11 @@ public:
         image_.planes_.multiply(cam_mul);
 
         /** update the saturated values. **/
-        saturated_.r_ *= cam_mul.r_;
-        saturated_.g1_ *= cam_mul.g1_;
-        saturated_.g2_ *= cam_mul.g2_;
-        saturated_.b_ *= cam_mul.b_;
-        //LOG("saturated="<<saturated_.r_<<" "<<saturated_.g1_<<" "<<saturated_.g2_<<" "<<saturated_.b_);
+        double max_mul = std::max(cam_mul.r_, cam_mul.g1_);
+        max_mul = std::max(max_mul, cam_mul.g2_);
+        max_mul = std::max(max_mul, cam_mul.b_);
+        saturated_ = std::ceil(saturated_ * max_mul);
+        //LOG("saturated="<<saturated_);
     }
 
     void adjust_dynamic_range() {
@@ -569,10 +569,10 @@ public:
     }
 
     void interpolate_horz_1331() {
-        image_.planes_.r_.interpolate_horz_1331_mt(saturated_.r_);
-        image_.planes_.g1_.interpolate_horz_1331_mt(saturated_.g1_);
-        image_.planes_.g2_.interpolate_horz_1331_mt(saturated_.g2_);
-        image_.planes_.b_.interpolate_horz_1331_mt(saturated_.b_);
+        image_.planes_.r_.interpolate_horz_1331_mt(saturated_);
+        image_.planes_.g1_.interpolate_horz_1331_mt(saturated_);
+        image_.planes_.g2_.interpolate_horz_1331_mt(saturated_);
+        image_.planes_.b_.interpolate_horz_1331_mt(saturated_);
     }
 
     void combine_greens() {
@@ -583,10 +583,6 @@ public:
             int g2 = image_.planes_.g2_.samples_[i];
             image_.planes_.g1_.samples_[i] = (g1 + g2 + 1)/2;
         }
-
-        /** update the saturated values. **/
-        saturated_.g1_ = (saturated_.g1_ + saturated_.g2_ + 1)/2;
-        //LOG("saturated="<<saturated_.r_<<" "<<saturated_.g1_<<" "<<saturated_.g2_<<" "<<saturated_.b_);
     }
 
     void determine_auto_brightness() {
@@ -676,9 +672,9 @@ public:
             double out_b;
 
             /** ensure saturated pixels stay saturated. **/
-            if (in_r >= saturated_.r_
-            &&  in_g >= saturated_.g1_
-            &&  in_b >= saturated_.b_) {
+            if (in_r >= saturated_
+            &&  in_g >= saturated_
+            &&  in_b >= saturated_) {
                 out_r = 65535.0;
                 out_g = 65535.0;
                 out_b = 65535.0;
@@ -747,9 +743,9 @@ public:
             double out_b;
 
             /** ensure saturated pixels stay saturated. **/
-            if (in_r >= saturated_.r_
-            &&  in_g >= saturated_.g1_
-            &&  in_b >= saturated_.b_) {
+            if (in_r >= saturated_
+            &&  in_g >= saturated_
+            &&  in_b >= saturated_) {
                 out_r = 65535.0;
                 out_g = 65535.0;
                 out_b = 65535.0;

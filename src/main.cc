@@ -7,6 +7,7 @@ process images.
 **/
 
 #include "cmd_line.h"
+#include "experiment.h"
 #include "log.h"
 #include "save_as_png.h"
 #include "register.h"
@@ -22,12 +23,13 @@ public:
         clo_argv_t argv
     ) {
         /** define the command line options. **/
-        const char *options_short = "?hpr";
+        const char *options_short = "?hprx";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'h', "help"},
             {'p', "--save-as-png"},
             {'r', "--register"},
+            {'x', "--experiment"},
             {0, nullptr}
         };
         CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -53,6 +55,9 @@ public:
         case 'r':
             exit_code = register_two_images(argc-1, argv+1);
             break;
+        case 'x':
+            exit_code = experiment_of_the_day(argc-1, argv+1);
+            break;
         }
 
         return exit_code;
@@ -63,6 +68,7 @@ public:
         LOG("  -h, -?, --help    : show usage.");
         LOG("  -p, --save-as-png : save image file as png.");
         LOG("  -r, --register    : register two images [experimental].");
+        LOG("  -x, --experiment  : run the experiment of the day.");
         LOG("further arguments are command dependent.");
     }
 };

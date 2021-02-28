@@ -78,6 +78,7 @@ public:
 
     /** set the pixel **/
     void set(int x, int y, RggbPixel p);
+    void set(int x, int y, int value);
 
     /** reduce every pixel by delta. **/
     void subtract(RggbPixel &delta);
