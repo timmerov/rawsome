@@ -94,6 +94,7 @@ public:
     void multiply(RggbDouble &factor);
     void multiply_sat(RggbDouble &factor);
     void multiply3(double factor);
+    void multiply4(double factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);

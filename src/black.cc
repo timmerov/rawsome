@@ -35,29 +35,34 @@ public:
         clo_argv_t argv
     ) {
         LOG("stacking black images...");
+
         int result = set_options(argc, argv);
         if (result == false) {
             print_usage();
             return 1;
         }
-
         LOG("in : \""<<in_filename_<<"\"");
         LOG("first: "<<first_);
         LOG("last : "<<last_);
         LOG("out: \""<<out_filename_<<"\"");
 
+        /** load and stack all of the black images. **/
         count_ = 0;
         for (int i = first_; i <= last_; ++i) {
             std::string fn = get_filename(i);
             image_.load_raw(fn.c_str());
             stack_image();
         }
-
         if (count_ == 0) {
             LOG("no images loaded.");
             return 1;
         }
 
+        /** scale the stacked image appropriately. **/
+        double scale = 1.0 / count_;
+        image_.planes_.multiply4(scale);
+
+        /** save the stacked image in rawsome format. **/
         image_.save_rawsome(out_filename_.c_str());
 
         return 0;

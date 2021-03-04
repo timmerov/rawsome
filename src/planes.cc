@@ -640,6 +640,15 @@ void Planes::multiply_sat(
     b_.multiply_sat(factor.b_);
 }
 
+void Planes::multiply4(
+    double factor
+) {
+    r_.multiply(factor);
+    g1_.multiply(factor);
+    g2_.multiply(factor);
+    b_.multiply(factor);
+}
+
 void Planes::multiply3(
     double factor
 ) {
