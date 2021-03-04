@@ -8,6 +8,7 @@ save in rawsome format.
 **/
 
 #include "black.h"
+#include "image.h"
 #include "log.h"
 
 #include <sstream>
@@ -25,12 +26,15 @@ public:
     std::string out_filename_;
     int first_ = 0;
     int last_ = 0;
+    Image image_;
+    Image stack_;
+    int count_ = 0;
 
     int run(
         int argc,
         clo_argv_t argv
     ) {
-        LOG("stack blacks - not yet implemented.");
+        LOG("stacking black images...");
         int result = set_options(argc, argv);
         if (result == false) {
             print_usage();
@@ -42,10 +46,19 @@ public:
         LOG("last : "<<last_);
         LOG("out: \""<<out_filename_<<"\"");
 
+        count_ = 0;
         for (int i = first_; i <= last_; ++i) {
             std::string fn = get_filename(i);
-            LOG("fn: "<<fn);
+            image_.load_raw(fn.c_str());
+            stack_image();
         }
+
+        if (count_ == 0) {
+            LOG("no images loaded.");
+            return 1;
+        }
+
+        image_.save_rawsome(out_filename_.c_str());
 
         return 0;
     }
@@ -121,7 +134,7 @@ public:
             path = "";
             fn_tags = in_filename_;
         } else {
-            path = in_filename_.substr(0, found);
+            path = in_filename_.substr(0, found + 1);
             fn_tags = in_filename_.substr(found + 1);
         }
 
@@ -191,6 +204,31 @@ public:
         std::stringstream ss;
         ss<<prefix<<i<<suffix;
         return ss.str();
+    }
+
+    void stack_image() {
+        if (image_.is_loaded_ == false) {
+            return;
+        }
+
+        int wd = stack_.planes_.r_.width_;
+        int ht = stack_.planes_.r_.height_;
+        int sz = wd * ht;
+        if (sz == 0) {
+            wd = image_.planes_.r_.width_;
+            ht = image_.planes_.r_.height_;
+            sz = wd * ht;
+            stack_.planes_.init(wd, ht);
+        }
+
+        for (int i = 0; i < sz; ++i) {
+            stack_.planes_.r_.samples_[i] += image_.planes_.r_.samples_[i];
+            stack_.planes_.g1_.samples_[i] += image_.planes_.g1_.samples_[i];
+            stack_.planes_.g2_.samples_[i] += image_.planes_.g2_.samples_[i];
+            stack_.planes_.b_.samples_[i] += image_.planes_.b_.samples_[i];
+        }
+
+        ++count_;
     }
 };
 

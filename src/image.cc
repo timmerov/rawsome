@@ -64,6 +64,19 @@ void copy_raw_to_planes(
     }
 }
 
+void write_plane(
+    std::ofstream &out,
+    const char *which,
+    Plane &plane
+) {
+    int sz = plane.width_ * plane.height_ * sizeof(int);
+    auto data = (const char *) plane.samples_.data();
+
+    out<<which<<":"<<std::endl;
+    out.write(data, sz);
+    out<<std::endl;
+}
+
 } // anonymous namespace
 
 void CameraParams::print() {
@@ -156,4 +169,29 @@ void Image::save_png(
         }
     }
     png.write(filename);
+}
+
+void Image::save_rawsome(
+    const char *filename
+) {
+    LOG("saving to rawsome: \""<<filename<<"\"...");
+
+    std::ofstream out(filename);
+    if (out.is_open() == false) {
+        return;
+    }
+
+    int wd = planes_.r_.width_;
+    int ht = planes_.r_.height_;
+
+    out<<"rawsome:"<<std::endl;
+    out<<"version: 0"<<std::endl;
+    out<<"width: "<<wd<<std::endl;
+    out<<"height: "<<ht<<std::endl;
+    out<<"format: rggb"<<std::endl;
+    write_plane(out, "r", planes_.r_);
+    write_plane(out, "g1", planes_.g1_);
+    write_plane(out, "g2", planes_.g2_);
+    write_plane(out, "b", planes_.b_);
+    out<<"end:"<<std::endl;
 }
