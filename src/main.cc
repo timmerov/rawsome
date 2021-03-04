@@ -10,7 +10,7 @@ process images.
 #include "experiment.h"
 #include "log.h"
 #include "save_as_png.h"
-#include "register.h"
+#include "stack.h"
 
 namespace {
 class Rawsome {
@@ -23,12 +23,12 @@ public:
         clo_argv_t argv
     ) {
         /** define the command line options. **/
-        const char *options_short = "?hprx";
+        const char *options_short = "?hpsx";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'h', "help"},
             {'p', "--save-as-png"},
-            {'r', "--register"},
+            {'r', "--stack-images"},
             {'x', "--experiment"},
             {0, nullptr}
         };
@@ -52,8 +52,8 @@ public:
         case 'p':
             exit_code = save_as_png(argc-1, argv+1);
             break;
-        case 'r':
-            exit_code = register_two_images(argc-1, argv+1);
+        case 's':
+            exit_code = stack_images(argc-1, argv+1);
             break;
         case 'x':
             exit_code = experiment_of_the_day(argc-1, argv+1);
@@ -65,10 +65,10 @@ public:
 
     void show_usage() {
         LOG("usage: rawsome command [...]");
-        LOG("  -h, -?, --help    : show usage.");
-        LOG("  -p, --save-as-png : save image file as png.");
-        LOG("  -r, --register    : register two images [experimental].");
-        LOG("  -x, --experiment  : run the experiment of the day.");
+        LOG("  -h, -?, --help     : show usage.");
+        LOG("  -p, --save-as-png  : save image file as png.");
+        LOG("  -s, --stack-images : stack images [experimental].");
+        LOG("  -x, --experiment   : run the experiment of the day.");
         LOG("further arguments are command dependent.");
     }
 };
