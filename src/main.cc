@@ -6,6 +6,7 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 process images.
 **/
 
+#include "black.h"
 #include "cmd_line.h"
 #include "experiment.h"
 #include "log.h"
@@ -23,12 +24,13 @@ public:
         clo_argv_t argv
     ) {
         /** define the command line options. **/
-        const char *options_short = "?hpsx";
+        const char *options_short = "?hbpsx";
         CmdLineOptions::LongFormat options_long[] = {
             {'?', "help"},
             {'h', "help"},
             {'p', "--save-as-png"},
-            {'r', "--stack-images"},
+            {'b', "--stack-blacks"},
+            {'s', "--stack-images"},
             {'x', "--experiment"},
             {0, nullptr}
         };
@@ -49,6 +51,9 @@ public:
         case 'h':
             show_usage();
             break;
+        case 'b':
+            exit_code = stack_blacks(argc-1, argv+1);
+            break;
         case 'p':
             exit_code = save_as_png(argc-1, argv+1);
             break;
@@ -66,6 +71,7 @@ public:
     void show_usage() {
         LOG("usage: rawsome command [...]");
         LOG("  -h, -?, --help     : show usage.");
+        LOG("  -b, --stack-blacks : stack black images.");
         LOG("  -p, --save-as-png  : save image file as png.");
         LOG("  -s, --stack-images : stack images [experimental].");
         LOG("  -x, --experiment   : run the experiment of the day.");

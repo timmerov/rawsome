@@ -791,9 +791,8 @@ int save_as_png(
     int argc,
     clo_argv_t argv
 ) {
-
-    SaveAsPng rawsome;
-    int exit_code = rawsome.run(argc, argv);
+    SaveAsPng sap;
+    int exit_code = sap.run(argc, argv);
 
     return exit_code;
 }
