@@ -16,32 +16,40 @@ register two source images.
 
 namespace {
 
-/*const int kFirstTag = 1179;
-const int kLastTag = 1180;
-const int kLastTag = 1198;
-const char *kInputFile = "/home/timmer/Pictures/2021-02-27/pleiades800/IMG_";
+//const int kFirstTag = 1227;
+//const int kLastTag = 1228;
+//const int kLastTag = 1953;
+const int kFirstTag = 1250;
+const int kLastTag = 1253;
+const char *kInputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/IMG_";
 const char *kOutputFile = "/home/timmer/Pictures/2021-02-27/pleiades800/stack.png";
-const int kMaxRegisterOffset = 5;*/
+const char *kBlackFile = "/home/timmer/Pictures/2021-03-03/black/black.rsm";
 
-const int kFirstTag = 1199;
-const int kLastTag = 1209;
-const char *kInputFile = "/home/timmer/Pictures/2021-02-27/black800/IMG_";
-const char *kOutputFile = "/home/timmer/Pictures/2021-02-27/black800/stack.png";
-const int kMaxRegisterOffset = 0;
+const int kNoiseFloor = 500;
+const int kMaxRegisterOffset = 700;
+
+class Luminage {
+public:
+    Luminage() = default;
+    ~Luminage() = default;
+
+    Image image_;
+    Plane luminance_;
+    std::vector<int> horz_;
+    std::vector<int> vert_;
+};
 
 class StackImages {
 public:
     StackImages() = default;
     ~StackImages() = default;
 
-    Image image_;
-    Plane luminance_;
+    Luminage prev_;
+    Luminage cur_;
+    Luminage stack_;
+
     int noise_ = 0;
-    int dx_ = 0;
-    int dy_ = 0;
     int count_ = 0;
-    Plane stack_lum_;
-    Image stack_image_;
 
     int run(
         int argc,
@@ -52,40 +60,49 @@ public:
 
         LOG("stack images - work in progress.");
 
-        /** load the first image into luminance2. **/
+        /** load the black file. **/
+        (void) kBlackFile;
+
+        /** load the first image. **/
         load_image(kFirstTag);
-        image_.camera_.print();
+        cur_.image_.camera_.print();
 
         /** copy it to the stacked image. **/
-        stack_lum_ = std::move(luminance_);
-        stack_image_ = std::move(image_);
+        stack_ = cur_;
 
-        /** perfectly aligned. **/
-        dx_ = 0;
-        dy_ = 0;
+        /** choose an arbitrary noise value. **/
+        noise_ = kNoiseFloor;
 
         /** one image loaded so far. **/
         count_ = 1;
 
-        /** pick an arbitrary noise value. **/
-        noise_ = 500;
+        /** do its sums **/
+        sum_horz_vert_luminance();
+
+        /** save current as previous. **/
+        prev_ = std::move(cur_);
 
         /** stack the next images. **/
         for (int i = kFirstTag+1; i <= kLastTag; ++i) {
+            /** load new current. **/
             load_image(i);
-            if (image_.is_loaded_ == false) {
+            if (cur_.image_.is_loaded_ == false) {
                 return 1;
             }
-            register_with_stack();
-            stack_with_offset();
+            register_fast();
+            //register_with_stack();
+            //stack_with_offset();
+
+            /** save current as previous. **/
+            prev_ = std::move(cur_);
         }
 
         white_balance();
         combine_greens();
         convert_to_srgb();
         apply_gamma();
-        stack_image_.planes_.scale_to_8bits();
-        stack_image_.save_png(kOutputFile);
+        stack_.image_.planes_.scale_to_8bits();
+        stack_.image_.save_png(kOutputFile);
 
         LOG("success.");
         return 0;
@@ -96,137 +113,149 @@ public:
     ) {
         std::stringstream ss;
         ss<<kInputFile<<tag<<".CR2";
-        image_.load_raw(ss.str().c_str());
-        if (image_.is_loaded_) {
-            compute_luminance(image_.planes_, luminance_);
+        cur_.image_.load_raw(ss.str().c_str());
+        if (cur_.image_.is_loaded_) {
+            compute_luminance(cur_.image_.planes_, cur_.luminance_);
         }
     }
 
-    void register_with_stack() {
-        int mindx = - kMaxRegisterOffset;
-        int maxdx = + kMaxRegisterOffset;
-        int mindy = - kMaxRegisterOffset;
-        int maxdy = + kMaxRegisterOffset;
+    void register_fast() {
+        LOG("fast registration...");
+        sum_horz_vert_luminance();
+        register_horz();
+        register_vert();
+    }
 
-        std::int64_t min_res = 0;
-        dx_ = 0;
-        dy_ = 0;
+    void sum_horz_vert_luminance() {
+        int wd = cur_.luminance_.width_;
+        int ht = cur_.luminance_.height_;
 
-        for (int dy = mindy; dy <= maxdy; ++dy) {
-            for (int dx = mindx; dx <= maxdx; ++dx) {
-                std::int64_t res = residual(dx, dy);
-                if (min_res == 0 || min_res > res) {
-                    min_res = res;
-                    dx_ = dx;
-                    dy_ = dy;
-                    LOG("min_res="<<min_res<<" dx,dy="<<dx<<","<<dy);
+        cur_.horz_.clear();
+        cur_.vert_.clear();
+        cur_.horz_.resize(wd, 0);
+        cur_.vert_.resize(ht, 0);
+
+        for (int y = 0; y < ht; ++y) {
+            for (int x = 0; x < wd; ++x) {
+                int val = cur_.luminance_.get(x, y);
+                if (val >= noise_) {
+                    cur_.horz_[x] += val;
+                    cur_.vert_[y] += val;
                 }
             }
         }
+
+        /*std::stringstream ss;
+        ss<<"horz: ["<<std::endl;
+        for (int x = 0; x < wd; ++x) {
+            ss<<" "<<cur_.horz_[x]<<std::endl;
+        }
+        ss<<" ]";
+        LOG(ss.str());
+
+        ss.str("");
+        ss.clear();
+        ss<<"vert: [";
+        for (int y = 0; y < ht; ++y) {
+            ss<<" "<<cur_.vert_[y];
+        }
+        ss<<" ]";
+        LOG(ss.str());*/
     }
 
-    std::int64_t residual(
-        int dx,
-        int dy
-    ) {
-        std::int64_t res = 0;
+    void register_horz() {
+        int min_diff = 0;
+        int max_diff = 0;
+        std::int64_t sum_diff = 0;
+        int min_dx = 0;
 
-        int wd = luminance_.width_;
-        int ht = luminance_.height_;
-        for (int y1 = 0; y1 < ht; ++y1) {
-            int y2 = y1 + dy;
-            if (y2 < 0 || y2 >= ht) {
-                continue;
-            }
+        int wd = cur_.horz_.size();
+        for (int dx = - kMaxRegisterOffset; dx <= kMaxRegisterOffset; ++dx) {
+            int sum = 0;
             for (int x1 = 0; x1 < wd; ++x1) {
                 int x2 = x1 + dx;
-                if (x2 < 0 || x2 >= wd) {
+                if (x2 < 0) {
                     continue;
                 }
-                int cl = luminance_.get(x1, y1);
-                int cs = stack_lum_.get(x2, y2);
-
-                cs = (cs + count_/2) / count_;
-                if (cs <= noise_) {
-                    cs = 0;
+                if (x2 >= wd) {
+                    break;
                 }
-                if (cl <= noise_) {
-                    cl = 0;
-                }
-
-                int df = std::abs(cs - cl);
-                res += df;
+                int c1 = cur_.horz_[x1];
+                int c2 = prev_.horz_[x2];
+                int dc = std::abs(c1 - c2);
+                sum += dc;
             }
+
+            if (min_diff == 0 || min_diff > sum) {
+                min_diff = sum;
+                min_dx = dx;
+                //LOG("dx="<<dx<<" sum="<<sum);
+            }
+            max_diff = std::max(max_diff, sum);
+            sum_diff += sum;
         }
 
-        return res;
+        int n = kMaxRegisterOffset*2 + 1;
+        double avg_diff = double(sum_diff) / double(n);
+        LOG("dx="<<min_dx<<" min="<<min_diff<<" max="<<max_diff<<" avg="<<avg_diff);
     }
 
-    void stack_with_offset() {
-        Plane dst_lum;
-        Planes dst_rggb;
+    void register_vert() {
+        int min_diff = 0;
+        int max_diff = 0;
+        std::int64_t sum_diff = 0;
+        int min_dy = 0;
 
-        int wd = stack_lum_.width_;
-        int ht = stack_lum_.height_;
-        dst_lum.init(wd, ht);
-        dst_rggb.init(wd, ht);
-
-        for (int y1 = 0; y1 < ht; ++y1) {
-            int y2 = y1 + dy_;
-            if (y2 < 0 || y2 >= ht) {
-                continue;
-            }
-            for (int x1 = 0; x1 < wd; ++x1) {
-                int x2 = x1 + dx_;
-                if (x2 < 0 || x2 >= wd) {
+        int ht = cur_.vert_.size();
+        for (int dy = - kMaxRegisterOffset; dy <= kMaxRegisterOffset; ++dy) {
+            int sum = 0;
+            for (int y1 = 0; y1 < ht; ++y1) {
+                int y2 = y1 + dy;
+                if (y2 < 0) {
                     continue;
                 }
-                int lum = luminance_.get(x1, y1);
-                lum += stack_lum_.get(x2, y2);
-                dst_lum.set(x1, y1, lum);
-
-                int r = image_.planes_.r_.get(x1, y1);
-                int g1 = image_.planes_.g1_.get(x1, y1);
-                int g2 = image_.planes_.g2_.get(x1, y1);
-                int b = image_.planes_.b_.get(x1, y1);
-                r += stack_image_.planes_.r_.get(x2, y2);
-                g1 += stack_image_.planes_.g1_.get(x2, y2);
-                g2 += stack_image_.planes_.g2_.get(x2, y2);
-                b += stack_image_.planes_.b_.get(x2, y2);
-                dst_rggb.r_.set(x1, y1, r);
-                dst_rggb.g1_.set(x1, y1, g1);
-                dst_rggb.g2_.set(x1, y1, g2);
-                dst_rggb.b_.set(x1, y1, b);
+                if (y2 >= ht) {
+                    break;
+                }
+                int c1 = cur_.vert_[y1];
+                int c2 = prev_.vert_[y2];
+                int dc = std::abs(c1 - c2);
+                sum += dc;
             }
+
+            if (min_diff == 0 || min_diff > sum) {
+                min_diff = sum;
+                min_dy = dy;
+                //LOG("dx="<<dx<<" sum="<<sum);
+            }
+            max_diff = std::max(max_diff, sum);
+            sum_diff += sum;
         }
 
-        stack_lum_ = std::move(dst_lum);
-        stack_image_.planes_ = std::move(dst_rggb);
-        ++count_;
+        int n = kMaxRegisterOffset*2 + 1;
+        double avg_diff = double(sum_diff) / double(n);
+        LOG("dy="<<min_dy<<" min="<<min_diff<<" max="<<max_diff<<" avg="<<avg_diff);
     }
 
     void white_balance() {
-        /**
-        normally, we would get the rggb camera multipliers from the raw_image.
-        note order permutation.
-        **/
         RggbDouble cam_mul;
-        cam_mul.r_ = stack_image_.camera_.wb_r_;
+        cam_mul.r_ = stack_.image_.camera_.wb_r_;
         cam_mul.g1_ = 1.0;
         cam_mul.g2_ = 1.0;
-        cam_mul.b_ = stack_image_.camera_.wb_b_;
+        cam_mul.b_ = stack_.image_.camera_.wb_b_;
         LOG("white balance: R="<<cam_mul.r_<<" B="<<cam_mul.b_);
 
         /** white balance. **/
-        stack_image_.planes_.multiply_sat(cam_mul);
+        stack_.image_.planes_.multiply_sat(cam_mul);
     }
 
     void combine_greens() {
-        int sz = stack_image_.planes_.g1_.width_ * stack_image_.planes_.g1_.height_;
+        auto& planes = stack_.image_.planes_;
+        int sz = planes.g1_.width_ * planes.g1_.height_;
         for (int i = 0; i < sz; ++i) {
-            int g1 = stack_image_.planes_.g1_.samples_[i];
-            int g2 = stack_image_.planes_.g2_.samples_[i];
-            stack_image_.planes_.g1_.samples_[i] = (g1 + g2 + 1)/2;
+            int g1 = planes.g1_.samples_[i];
+            int g2 = planes.g2_.samples_[i];
+            planes.g1_.samples_[i] = (g1 + g2 + 1)/2;
         }
     }
 
@@ -250,12 +279,13 @@ public:
             }
         }
 
-        int sz = stack_image_.planes_.r_.width_ * stack_image_.planes_.r_.height_;
+        auto& planes = stack_.image_.planes_;
+        int sz = planes.r_.width_ * planes.r_.height_;
         for (int i = 0; i < sz; ++i) {
             /** start with the original rgb. **/
-            int in_r = stack_image_.planes_.r_.samples_[i];
-            int in_g = stack_image_.planes_.g1_.samples_[i];
-            int in_b = stack_image_.planes_.b_.samples_[i];
+            int in_r = planes.r_.samples_[i];
+            int in_g = planes.g1_.samples_[i];
+            int in_b = planes.b_.samples_[i];
 
             /** transform by matrix multiplication. **/
             double out_r = mat[0][0]*in_r + mat[0][1]*in_g + mat[0][2]*in_b;
@@ -263,17 +293,17 @@ public:
             double out_b = mat[2][0]*in_r + mat[2][1]*in_g + mat[2][2]*in_b;
 
             /** overwrite old values. **/
-            stack_image_.planes_.r_.samples_[i] = out_r;
-            stack_image_.planes_.g1_.samples_[i] = out_g;
-            stack_image_.planes_.b_.samples_[i] = out_b;
+            planes.r_.samples_[i] = out_r;
+            planes.g1_.samples_[i] = out_g;
+            planes.b_.samples_[i] = out_b;
         }
     }
 
     void apply_gamma() {
-        double pwr = 1.0 / stack_image_.camera_.gamma0_;
-        double ts = stack_image_.camera_.gamma1_;
+        double pwr = 1.0 / stack_.image_.camera_.gamma0_;
+        double ts = stack_.image_.camera_.gamma1_;
         int white = 0x10000;
-        stack_image_.planes_.apply_gamma(pwr, ts, white);
+        stack_.image_.planes_.apply_gamma(pwr, ts, white);
     }
 };
 }
