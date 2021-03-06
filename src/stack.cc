@@ -16,17 +16,24 @@ register two source images.
 
 namespace {
 
-//const int kFirstTag = 1227;
-//const int kLastTag = 1228;
-//const int kLastTag = 1953;
-const int kFirstTag = 1250;
-const int kLastTag = 1253;
+/** everything **/
+/*const int kFirstTag = 1227;
+const int kLastTag = 1953;*/
+
+/** first skip is 1251 -> 1252 **/
+/*const int kFirstTag = 1250;
+const int kLastTag = 1253;*/
+
+/** up to the first skip **/
+const int kFirstTag = 1227;
+const int kLastTag = 1251;
+
 const char *kInputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/IMG_";
-const char *kOutputFile = "/home/timmer/Pictures/2021-02-27/pleiades800/stack.png";
+const char *kOutputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/stack.png";
 const char *kBlackFile = "/home/timmer/Pictures/2021-03-03/black/black.rsm";
 
 const int kNoiseFloor = 500;
-const int kMaxRegisterOffset = 700;
+const int kMaxRegisterOffset = 300;
 
 class Luminage {
 public:
@@ -44,12 +51,15 @@ public:
     StackImages() = default;
     ~StackImages() = default;
 
+    Image black_;
     Luminage prev_;
     Luminage cur_;
-    Luminage stack_;
+    Image stack_;
 
     int noise_ = 0;
     int count_ = 0;
+    int dx_ = 0;
+    int dy_ = 0;
 
     int run(
         int argc,
@@ -61,14 +71,14 @@ public:
         LOG("stack images - work in progress.");
 
         /** load the black file. **/
-        (void) kBlackFile;
+        black_.load_rawsome(kBlackFile);
 
         /** load the first image. **/
         load_image(kFirstTag);
         cur_.image_.camera_.print();
 
         /** copy it to the stacked image. **/
-        stack_ = cur_;
+        stack_ = cur_.image_;
 
         /** choose an arbitrary noise value. **/
         noise_ = kNoiseFloor;
@@ -90,19 +100,28 @@ public:
                 return 1;
             }
             register_fast();
-            //register_with_stack();
-            //stack_with_offset();
+            stack_with_offset();
 
             /** save current as previous. **/
             prev_ = std::move(cur_);
         }
 
+        /** scale the stacked image. **/
+        if (count_ == 0) {
+            LOG("no images.");
+            return 1;
+        }
+        double brightness = 10.0;
+        double factor = brightness / double(count_);
+        stack_.planes_.multiply4(factor);
+
+        /** save the stacked image. **/
         white_balance();
         combine_greens();
         convert_to_srgb();
         apply_gamma();
-        stack_.image_.planes_.scale_to_8bits();
-        stack_.image_.save_png(kOutputFile);
+        stack_.planes_.scale_to_8bits();
+        stack_.save_png(kOutputFile);
 
         LOG("success.");
         return 0;
@@ -114,8 +133,20 @@ public:
         std::stringstream ss;
         ss<<kInputFile<<tag<<".CR2";
         cur_.image_.load_raw(ss.str().c_str());
-        if (cur_.image_.is_loaded_) {
-            compute_luminance(cur_.image_.planes_, cur_.luminance_);
+        if (cur_.image_.is_loaded_ == false) {
+            return;
+        }
+        subtract_black();
+        compute_luminance(cur_.image_.planes_, cur_.luminance_);
+    }
+
+    void subtract_black() {
+        int sz = cur_.image_.planes_.r_.width_ * cur_.image_.planes_.r_.height_;
+        for (int i = 0; i < sz; ++i) {
+            cur_.image_.planes_.r_.samples_[i] -= black_.planes_.r_.samples_[i];
+            cur_.image_.planes_.g1_.samples_[i] -= black_.planes_.g1_.samples_[i];
+            cur_.image_.planes_.g2_.samples_[i] -= black_.planes_.g2_.samples_[i];
+            cur_.image_.planes_.b_.samples_[i] -= black_.planes_.b_.samples_[i];
         }
     }
 
@@ -198,6 +229,8 @@ public:
         int n = kMaxRegisterOffset*2 + 1;
         double avg_diff = double(sum_diff) / double(n);
         LOG("dx="<<min_dx<<" min="<<min_diff<<" max="<<max_diff<<" avg="<<avg_diff);
+
+        dx_ = min_dx;
     }
 
     void register_vert() {
@@ -235,22 +268,66 @@ public:
         int n = kMaxRegisterOffset*2 + 1;
         double avg_diff = double(sum_diff) / double(n);
         LOG("dy="<<min_dy<<" min="<<min_diff<<" max="<<max_diff<<" avg="<<avg_diff);
+
+        dy_ = min_dy;
+    }
+
+    void stack_with_offset() {
+        int wd = cur_.image_.planes_.r_.width_;
+        int ht = cur_.image_.planes_.r_.height_;
+
+        Planes dst;
+        dst.init(wd, ht);
+
+        for (int y1 = 0; y1 < ht; ++y1) {
+            int y2 = y1 + dy_;
+            if (y2 < 0) {
+                continue;
+            }
+            if (y2 >= ht) {
+                break;
+            }
+            for (int x1 = 0; x1 < wd; ++x1) {
+                int x2 = x1 + dx_;
+                if (x2 < 0) {
+                    continue;
+                }
+                if (x2 >= wd) {
+                    break;
+                }
+                int r = cur_.image_.planes_.r_.get(x1, y1);
+                int g1 = cur_.image_.planes_.g1_.get(x1, y1);
+                int g2 = cur_.image_.planes_.g2_.get(x1, y1);
+                int b = cur_.image_.planes_.b_.get(x1, y1);
+                r += stack_.planes_.r_.get(x2, y2);
+                g1 += stack_.planes_.g1_.get(x2, y2);
+                g2 += stack_.planes_.g2_.get(x2, y2);
+                b += stack_.planes_.b_.get(x2, y2);
+                dst.r_.set(x1, y1, r);
+                dst.g1_.set(x1, y1, g1);
+                dst.g2_.set(x1, y1, g2);
+                dst.b_.set(x1, y1, b);
+            }
+        }
+
+        stack_.planes_ = std::move(dst);
+        ++count_;
     }
 
     void white_balance() {
         RggbDouble cam_mul;
-        cam_mul.r_ = stack_.image_.camera_.wb_r_;
+        cam_mul.r_ = stack_.camera_.wb_r_;
         cam_mul.g1_ = 1.0;
         cam_mul.g2_ = 1.0;
-        cam_mul.b_ = stack_.image_.camera_.wb_b_;
+        cam_mul.b_ = stack_.camera_.wb_b_;
         LOG("white balance: R="<<cam_mul.r_<<" B="<<cam_mul.b_);
 
         /** white balance. **/
-        stack_.image_.planes_.multiply_sat(cam_mul);
+        stack_.planes_.multiply_sat(cam_mul);
     }
 
     void combine_greens() {
-        auto& planes = stack_.image_.planes_;
+        auto& planes = stack_.planes_;
         int sz = planes.g1_.width_ * planes.g1_.height_;
         for (int i = 0; i < sz; ++i) {
             int g1 = planes.g1_.samples_[i];
@@ -279,7 +356,7 @@ public:
             }
         }
 
-        auto& planes = stack_.image_.planes_;
+        auto& planes = stack_.planes_;
         int sz = planes.r_.width_ * planes.r_.height_;
         for (int i = 0; i < sz; ++i) {
             /** start with the original rgb. **/
@@ -300,10 +377,10 @@ public:
     }
 
     void apply_gamma() {
-        double pwr = 1.0 / stack_.image_.camera_.gamma0_;
-        double ts = stack_.image_.camera_.gamma1_;
+        double pwr = 1.0 / stack_.camera_.gamma0_;
+        double ts = stack_.camera_.gamma1_;
         int white = 0x10000;
-        stack_.image_.planes_.apply_gamma(pwr, ts, white);
+        stack_.planes_.apply_gamma(pwr, ts, white);
     }
 };
 }

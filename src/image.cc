@@ -77,6 +77,39 @@ void write_plane(
     out<<std::endl;
 }
 
+void read_plane(
+    std::ifstream &in,
+    int wd,
+    int ht,
+    Plane &plane
+) {
+    plane.init(wd, ht);
+
+    int sz = wd * ht * sizeof(int);
+    auto data = (char *) plane.samples_.data();
+
+    in.read(data, sz);
+
+    std::string line;
+    std::getline(in, line);
+}
+
+std::string trim(
+    const std::string &s
+) {
+    auto len = s.size();
+    auto first = s.find_first_not_of(" \t");
+    if (first >= len) {
+        /** it's all whitespace. **/
+        return "";
+    }
+
+    auto last = s.find_last_not_of(" \t");
+    len = last - first + 1;
+
+    return s.substr(first, len);
+}
+
 } // anonymous namespace
 
 void CameraParams::print() {
@@ -169,6 +202,64 @@ void Image::save_png(
         }
     }
     png.write(filename);
+}
+
+void Image::load_rawsome(
+    const char *filename
+) {
+    LOG("loading rawsome from: \""<<filename<<"\"...");
+    is_loaded_ = false;
+    planes_ = Planes();
+
+    std::ifstream in(filename);
+    if (in.is_open() == false) {
+        return;
+    }
+
+    int wd = 0;
+    int ht = 0;
+
+    for(;;) {
+        /** get data line by line. **/
+        std::string line;
+        std::getline(in, line);
+        if (line.empty()) {
+            break;
+        }
+
+        /** lines start with a command followed by a colon. **/
+        auto len = line.size();
+        auto found = line.find(":");
+        if (found >= len) {
+            /** a line with no colon? hrm... **/
+            continue;
+        }
+        std::string cmd = line.substr(0, found);
+        std::string arg = line.substr(found+1);
+
+        /** commands and args may have leading and trailing whitespace. **/
+        cmd = trim(cmd);
+        arg = trim(arg);
+
+        /** dispatch the command. **/
+        if (cmd == "width") {
+            wd = std::atoi(arg.c_str());
+            LOG("width: "<<wd);
+        } else if (cmd == "height") {
+            ht = std::atoi(arg.c_str());
+            LOG("height: "<<ht);
+        } else if (cmd == "r") {
+            read_plane(in, wd, ht, planes_.r_);
+        } else if (cmd == "g1") {
+            read_plane(in, wd, ht, planes_.g1_);
+        } else if (cmd == "g2") {
+            read_plane(in, wd, ht, planes_.g2_);
+        } else if (cmd == "b") {
+            read_plane(in, wd, ht, planes_.b_);
+        }
+    }
+
+    is_loaded_ = true;
 }
 
 void Image::save_rawsome(

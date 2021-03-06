@@ -67,5 +67,6 @@ public:
 
     void save_png(const char *filename);
 
+    void load_rawsome(const char *filename);
     void save_rawsome(const char *filename);
 };
