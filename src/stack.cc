@@ -25,8 +25,12 @@ const int kLastTag = 1953;*/
 const int kLastTag = 1253;*/
 
 /** up to the first skip **/
+/*const int kFirstTag = 1227;
+const int kLastTag = 1251;*/
+
+/** first only **/
 const int kFirstTag = 1227;
-const int kLastTag = 1251;
+const int kLastTag = 1227;
 
 const char *kInputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/IMG_";
 const char *kOutputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/stack.png";
@@ -34,6 +38,9 @@ const char *kBlackFile = "/home/timmer/Pictures/2021-03-03/black/black.rsm";
 
 const int kNoiseFloor = 500;
 const int kMaxRegisterOffset = 300;
+
+const int kStarFloor = 200;
+const int kMaxStarRadius = 10;
 
 class Luminage {
 public:
@@ -88,6 +95,9 @@ public:
 
         /** do its sums **/
         sum_horz_vert_luminance();
+
+        /** find stars **/
+        find_stars();
 
         /** save current as previous. **/
         prev_ = std::move(cur_);
@@ -192,6 +202,199 @@ public:
         }
         ss<<" ]";
         LOG(ss.str());*/
+    }
+
+    class Star {
+    public:
+        Star() = default;
+        ~Star() = default;
+
+        double x_ = 0.0;
+        double y_ = 0.0;
+        int brightness_ = 0;
+    };
+
+    class FindStars {
+    public:
+        FindStars() = default;
+        ~FindStars() = default;
+
+        Plane luminance_;
+        std::vector<std::int64_t> horz_;
+        std::vector<std::int64_t> vert_;
+        int xmax_ = 0;
+        int ymax_ = 0;
+        int radius_ = 0;
+        std::vector<Star> stars_;
+
+        void init(
+            Plane& luminance
+        ) {
+            luminance_ = luminance;
+
+            int wd = luminance_.width_;
+            int ht = luminance_.height_;
+            horz_.resize(wd);
+            vert_.resize(ht);
+
+            reinit_horz(0, wd);
+            reinit_vert(0, ht);
+        }
+
+        void reinit_horz(
+            int x0,
+            int x1
+        ) {
+            int wd = luminance_.width_;
+            int ht = luminance_.height_;
+            int sz = wd * ht;
+
+            for (int x = x0; x < x1; ++x) {
+                horz_[x] = 0;
+            }
+
+            for (int y = 0; y < ht; ++y) {
+                for (int x = x0; x < x1; ++x) {
+                    int c16 = luminance_.get(x, y);
+                    std::int64_t c = pin_to_16bits(c16);
+                    /** unique-ify luminance. **/
+                    c = c*sz + y*wd + x;
+                    horz_[x] = std::max(horz_[x], c);
+                }
+            }
+        }
+
+        void reinit_vert(
+            int y0,
+            int y1
+        ) {
+            int wd = luminance_.width_;
+            int ht = luminance_.height_;
+            int sz = wd * ht;
+
+            for (int y = y0; y < y1; ++y) {
+                vert_[y] = 0;
+            }
+
+            for (int y = y0; y < y1; ++y) {
+                for (int x = 0; x < wd; ++x) {
+                    int c16 = luminance_.get(x, y);
+                    std::int64_t c = pin_to_16bits(c16);
+                    /** unique-ify luminance. **/
+                    c = c*sz + y*wd + x;
+                    vert_[y] = std::max(vert_[y], c);
+                }
+            }
+        }
+
+        int find_brightest() {
+            int wd = luminance_.width_;
+            int ht = luminance_.height_;
+            int sz = wd * ht;
+
+            xmax_ = 0;
+            ymax_ = 0;
+
+            std::int64_t cmax = 0;
+            for (int x = 0; x < wd; ++x) {
+                std::int64_t c = horz_[x];
+                if (cmax < c) {
+                    cmax = c;
+                    xmax_ = x;
+                }
+            }
+            cmax = 0;
+            for (int y = 0; y < ht; ++y) {
+                std::int64_t c = vert_[y];
+                if (cmax < c) {
+                    cmax = c;
+                    ymax_ = y;
+                }
+            }
+            LOG("max x,y="<<xmax_<<","<<ymax_);
+
+            int brightness = cmax / sz;
+            return brightness;
+        }
+
+        void brightest_centroid() {
+            std::int64_t sumc = luminance_.get(xmax_, ymax_);
+            std::int64_t sumx = sumc * xmax_;
+            std::int64_t sumy = sumc * ymax_;
+            int pixels = 1;
+            radius_ = kMaxStarRadius;
+            for (int r = 1; r <= kMaxStarRadius; ++r) {
+                bool again = false;
+                for (int y = ymax_ - r; y <= ymax_ + r; y += 2*r) {
+                    for (int x = xmax_ - r; x <= xmax_ + r; ++x) {
+                        int c = luminance_.get(x, y);
+                        if (c >= kStarFloor) {
+                            ++pixels;
+                            sumc += c;
+                            sumx += c * x;
+                            sumy += c * y;
+                            again = true;
+                        }
+                    }
+                }
+                for (int y = ymax_ - r + 1; y <= ymax_ + r - 1; ++y) {
+                    for (int x = xmax_ - r; x <= xmax_ + r; x += 2*r) {
+                        int c = luminance_.get(x, y);
+                        if (c >= kStarFloor) {
+                            ++pixels;
+                            sumc += c;
+                            sumx += c * x;
+                            sumy += c * y;
+                            again = true;
+                        }
+                    }
+                }
+                //LOG("r="<<r<<" sumc="<<sumc<<" sumx="<<sumx<<" sumy="<<sumy<<" pixels="<<pixels);
+                if (again == false) {
+                    radius_ = r;
+                    break;
+                }
+            }
+            double x = double(sumx) / double(sumc);
+            double y = double(sumy) / double(sumc);
+            LOG("c="<<sumc<<" x,y="<<x<<","<<y<<" pixels="<<pixels<<" radius="<<radius_);
+
+            auto& star = stars_.emplace_back();
+            star.x_ = x;
+            star.y_ = y;
+            star.brightness_ = sumc;
+        }
+
+        void erase_brightest() {
+            int x0 = xmax_ - radius_;
+            int x1 = xmax_ + radius_ + 1;
+            int y0 = ymax_ - radius_;
+            int y1 = ymax_ + radius_ + 1;
+
+            for (int y = y0; y < y1; ++y) {
+                for (int x = x0; x < x1; ++x) {
+                    luminance_.set(x, y, 0);
+                }
+            }
+
+            reinit_horz(x0, x1);
+            reinit_vert(y0, y1);
+        }
+    };
+
+    void find_stars() {
+        FindStars fs;
+        fs.init(cur_.luminance_);
+        for (int i = 0; i < 30; ++i) {
+            int brightness = fs.find_brightest();
+            if (brightness < kStarFloor) {
+                break;
+            }
+            fs.brightest_centroid();
+            fs.erase_brightest();
+        }
+        int nstars = fs.stars_.size();
+        LOG("nstars="<<nstars);
     }
 
     void register_horz() {
