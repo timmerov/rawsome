@@ -150,6 +150,7 @@ public:
 
         image_.camera_.print();
         show_special_pixel();
+        fix_bad_pixels();
         determine_saturation();
         desaturate_pixels();
         show_special_pixel();
@@ -180,6 +181,57 @@ public:
         int g2 = planes_.g2_.get(x, y);
         int b = planes_.b_.get(x, y);
         LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
+    }
+
+    void fix_bad_pixels() {
+        /** hard coded list of bad pixels. **/
+        fix_bad_pixel(4011, 2495, 0);
+    }
+
+    void fix_bad_pixel(
+        int x,
+        int y,
+        int which
+    ) {
+        const char *what = "";
+        Plane *plane = nullptr;
+        switch (which) {
+            case 0:
+                plane = &image_.planes_.r_;
+                what = "red";
+                break;
+            case 1:
+                plane = &image_.planes_.g1_;
+                what = "green1";
+                break;
+            case 2:
+                plane = &image_.planes_.g2_;
+                what = "green2";
+                break;
+            case 3:
+                plane = &image_.planes_.b_;
+                what = "blue";
+                break;
+        }
+
+        LOG("fixing bad "<<what<<" pixel at "<<x<<","<<y);
+
+        /**
+        we found the bad pixel by inspection.
+        x0,y0 are in final coordinates.
+        ie after interpolation. hence the /2.
+        also after cropping border pixels. hence the +2.
+        **/
+        x = x / 2 + 2;
+        y = y / 2 + 2;
+
+        /** overwrite the bad pixel with the average of its neighbors. **/
+        int c0 = plane->get(x, y-1);
+        int c1 = plane->get(x-1, y);
+        int c2 = plane->get(x+1, y);
+        int c3 = plane->get(x, y+1);
+        int c = (c0 + c1 + c2 + c3 + 2) / 4;
+        plane->set(x, y, c);
     }
 
     void determine_saturation() {
