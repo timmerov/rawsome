@@ -12,6 +12,6 @@ echo Building and installing third party products...
 pushd $BUILD_DIR_DEBUG
 make $CORES
 popd
-#pushd $BUILD_DIR_RELEASE
-#make $CORES
-#popd
+pushd $BUILD_DIR_RELEASE
+make $CORES
+popd

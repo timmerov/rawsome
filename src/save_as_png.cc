@@ -446,16 +446,16 @@ public:
         l = l / 2 + 2;
         b = b / 2 + 2;
         r = r / 2 + 2;
-        int wd = r - l;
-        int ht = b - t;
+        int kwd = r - l;
+        int kht = b - t;
         /**
         we want the patch to have a center.
         so we ensure the width and height are odd.
         **/
-        wd |= 1;
-        ht |= 1;
-        r = l + wd;
-        b = t + ht;
+        kwd |= 1;
+        kht |= 1;
+        r = l + kwd;
+        b = t + kht;
 
         /** copy the image and crop it. expensive. **/
         Planes patch = image_.planes_;
@@ -463,44 +463,225 @@ public:
 
         /** compute the kernel luninance from the patch. **/
         Plane kernel;
-        kernel.init(wd, ht);
+        kernel.init(kwd, kht);
         compute_luminance(patch, kernel);
+        patch.init(0, 0);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
-        int litup = 1.5 * (wd + ht);
+        int litup = 1.5 * (kwd + kht);
 
         /** find a threshold that gives us that many pixels. **/
         Plane sorted = kernel;
         std::sort(sorted.samples_.begin(), sorted.samples_.end());
-        int sz = wd * ht;
-        int idx = sz - litup - 1;
+        int ksz = kwd * kht;
+        int idx = ksz - litup - 1;
         int threshold = sorted.samples_[idx];
         LOG("deblur threshold: "<<threshold);
 
-        /**
-        obliterate pixels below the threshold.
-        we will need the scaling factor.
-        **/
-        int sum = 0;
-        for (int i = 0; i < sz; ++i) {
+        /** obliterate pixels below the threshold. **/
+        for (int i = 0; i < ksz; ++i) {
             int s = kernel.samples_[i];
-            if (s < threshold) {
-                kernel.samples_[i] = 0;
-            } else {
-                sum += s;
-            }
+            s -= threshold;
+            s = std::max(s, 0);
+            kernel.samples_[i] = s;
         }
-        LOG("deblur sum: "<<sum);
 
         /**
         hack: overwrite the image to ensure we have the right patch.
         for venus and crescent moon with people on bridge: 4520,1470,4642,1554
         **/
         //image_.planes_ = patch;
-        image_.planes_.r_ = kernel;
+        /*image_.planes_.r_ = kernel;
         image_.planes_.g1_ = kernel;
         image_.planes_.g2_ = kernel;
-        image_.planes_.b_ = kernel;
+        image_.planes_.b_ = kernel;*/
+
+        /**
+        okay now we're going to do the Lucy-Richardson deconvolution algorithm.
+        this guy explains: https://stargazerslounge.com/topic/228147-lucy-richardson-deconvolution-so-what-is-it/
+        also on wikipedia.
+        **/
+
+        /** transpose the kernel. **/
+        Plane transpose = kernel;
+        transpose.transpose();
+        int twd = transpose.width_;
+        int tht = transpose.height_;
+
+        /** start with the observed image. **/
+        Planes estimate0 = image_.planes_;
+        int swd = image_.planes_.r_.width_;
+        int sht = image_.planes_.r_.height_;
+        /*
+        estimate0.init(swd, sht);
+        int ssz = swd * sht;
+        for (int i = 0; i < ssz; ++i) {
+            estimate0.r_.samples_[i] = 32768;
+            estimate0.g1_.samples_[i] = 32768;
+            estimate0.g2_.samples_[i] = 32768;
+            estimate0.b_.samples_[i] = 32768;
+        }
+        */
+
+        /** allocate temporary storage. **/
+        Planes estimate1;
+        Planes estimate2;
+        estimate1.init(swd, sht);
+        estimate2.init(swd, sht);
+
+        int niterations = 25;
+        for (int n = 1; n <= niterations; ++n) {
+            LOG("iteration: "<<n<<" of "<<niterations);
+
+            /** convolve the first estimate with blur kernel **/
+            for (int y1 = 0; y1 < sht; ++y1) {
+                if (y1 % 100 == 0) {
+                    LOG("y1="<<y1);
+                }
+                for (int x1 = 0; x1 < swd; ++x1) {
+                    int64_t r = 0;
+                    int64_t g1 = 0;
+                    int64_t g2 = 0;
+                    int64_t b = 0;
+                    int64_t sumk = 0;
+                    for (int yk = 0; yk < kht; ++yk) {
+                        for (int xk = 0; xk < kwd; ++xk) {
+                            int x0 = x1 + xk - kwd / 2;
+                            int y0 = y1 + yk - kht / 2;
+                            if (x0 < 0 || x0 >= swd || y0 < 0 || y0 >= sht) {
+                                continue;
+                            }
+                            int64_t k = kernel.get(xk, yk);
+                            if (k > 0) {
+                                r += k * estimate0.r_.get(x0, y0);
+                                g1 += k * estimate0.g1_.get(x0, y0);
+                                g2 += k * estimate0.g2_.get(x0, y0);
+                                b += k * estimate0.b_.get(x0, y0);
+                                sumk += k;
+                            }
+                        }
+                    }
+                    if (sumk > 0) {
+                        r /= sumk;
+                        g1 /= sumk;
+                        g2 /= sumk;
+                        b /= sumk;
+                    }
+                    estimate1.r_.set(x1, y1, r);
+                    estimate1.g1_.set(x1, y1, g1);
+                    estimate1.g2_.set(x1, y1, g2);
+                    estimate1.b_.set(x1, y1, b);
+                }
+            }
+
+            /** divide the observed image by the result. **/
+            for (int y = 0; y < sht; ++y) {
+                for (int x = 0; x < swd; ++x) {
+                    int64_t r = image_.planes_.r_.get(x, y);
+                    int64_t g1 = image_.planes_.g1_.get(x, y);
+                    int64_t g2 = image_.planes_.g2_.get(x, y);
+                    int64_t b = image_.planes_.b_.get(x, y);
+                    r *= 65536;
+                    g1 *= 65536;
+                    g2 *= 65536;
+                    b *= 65536;
+                    int64_t er = estimate1.r_.get(x, y);
+                    int64_t eg1 = estimate1.g1_.get(x, y);
+                    int64_t eg2 = estimate1.g2_.get(x, y);
+                    int64_t eb = estimate1.b_.get(x, y);
+                    if (er == 0) {
+                        r = 0;
+                    } else {
+                        r /= er;
+                    }
+                    if (eg1 == 0) {
+                        g1 = 0;
+                    } else {
+                        g1 /= eg1;
+                    }
+                    if (eg2 == 0) {
+                        g2 = 0;
+                    } else {
+                        g2 /= eg2;
+                    }
+                    if (eb == 0) {
+                        b = 0;
+                    } else {
+                        b /= eb;
+                    }
+                    estimate1.r_.set(x, y, r);
+                    estimate1.g1_.set(x, y, g1);
+                    estimate1.g2_.set(x, y, g2);
+                    estimate1.b_.set(x, y, b);
+                }
+            }
+
+            /** convolve the scaling factor with transpose of the blur kernel **/
+            for (int y1 = 0; y1 < sht; ++y1) {
+                if (y1 % 100 == 0) {
+                    LOG("y1="<<y1);
+                }
+                for (int x1 = 0; x1 < swd; ++x1) {
+                    int64_t r = 0;
+                    int64_t g1 = 0;
+                    int64_t g2 = 0;
+                    int64_t b = 0;
+                    int64_t sumt = 0;
+                    for (int yt = 0; yt < tht; ++yt) {
+                        for (int xt = 0; xt < twd; ++xt) {
+                            int x0 = x1 + xt - twd / 2;
+                            int y0 = y1 + yt - tht / 2;
+                            if (x0 < 0 || x0 >= swd || y0 < 0 || y0 >= sht) {
+                                continue;
+                            }
+                            int64_t t = kernel.get(xt, yt);
+                            if (t > 0) {
+                                r += t * estimate1.r_.get(x0, y0);
+                                g1 += t * estimate1.g1_.get(x0, y0);
+                                g2 += t * estimate1.g2_.get(x0, y0);
+                                b += t * estimate1.b_.get(x0, y0);
+                                sumt += t;
+                            }
+                        }
+                    }
+                    if (sumt > 0) {
+                        r /= sumt;
+                        g1 /= sumt;
+                        g2 /= sumt;
+                        b /= sumt;
+                    }
+                    estimate2.r_.set(x1, y1, r);
+                    estimate2.g1_.set(x1, y1, g1);
+                    estimate2.g2_.set(x1, y1, g2);
+                    estimate2.b_.set(x1, y1, b);
+                }
+            }
+
+            /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
+            for (int y = 0; y < sht; ++y) {
+                for (int x = 0; x < swd; ++x) {
+                    int64_t r = estimate0.r_.get(x, y);
+                    int64_t g1 = estimate0.g1_.get(x, y);
+                    int64_t g2 = estimate0.g2_.get(x, y);
+                    int64_t b = estimate0.b_.get(x, y);
+                    r *= estimate2.r_.get(x, y);
+                    g1 *= estimate2.g1_.get(x, y);
+                    g2 *= estimate2.g2_.get(x, y);
+                    b *= estimate2.b_.get(x, y);
+                    r /= 65536;
+                    g1 /= 65536;
+                    g2 /= 65536;
+                    b /= 65536;
+                    estimate0.r_.set(x, y, r);
+                    estimate0.g1_.set(x, y, g1);
+                    estimate0.g2_.set(x, y, g2);
+                    estimate0.b_.set(x, y, b);
+                }
+            }
+        }
+
+        /** hack: save it. **/
+        image_.planes_ = std::move(estimate0);
     }
 
     void adjust_dynamic_range() {
