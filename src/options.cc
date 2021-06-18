@@ -31,7 +31,7 @@ where X% of the pixels consume 1-X% of the range.
 #include <sstream>
 
 namespace {
-bool comma_separated_inputs(
+bool comma_separated_doubles_2(
     const char *s,
     double &x,
     double &y
@@ -58,6 +58,63 @@ bool comma_separated_inputs(
         return false;
     }
     ss >> y;
+    if (ss.fail()) {
+        return false;
+    }
+    return true;
+}
+
+bool comma_separated_ints_4(
+    const char *s,
+    int &a,
+    int &b,
+    int &c,
+    int &d
+) {
+    /**
+    wtf can c++ not just do this:
+    stringstream ss(s);
+    ss>>a>>",">>b>>",">>c>>",">>d;
+    return ss.good();
+    ?
+    sigh.
+    **/
+    std::stringstream ss(s);
+    ss >> a;
+    if (ss.fail()) {
+        return false;
+    }
+    char ch = 0;
+    ss >> ch;
+    if (ss.fail()) {
+        return false;
+    }
+    if (ch != ',') {
+        return false;
+    }
+    ss >> b;
+    if (ss.fail()) {
+        return false;
+    }
+    ss >> ch;
+    if (ss.fail()) {
+        return false;
+    }
+    if (ch != ',') {
+        return false;
+    }
+    ss >> c;
+    if (ss.fail()) {
+        return false;
+    }
+    ss >> ch;
+    if (ss.fail()) {
+        return false;
+    }
+    if (ch != ',') {
+        return false;
+    }
+    ss >> d;
     if (ss.fail()) {
         return false;
     }
@@ -132,8 +189,12 @@ bool Options::parse(
     auto_brightness_ = -1.0;
     linear_brightness_ = 0.0;
     color_enhancement_ = 0.0;
+    deblur_left_ = 0;
+    deblur_top_ = 0;
+    deblur_right_ = 0;
+    deblur_bottom_ = 0;
 
-    const char *options_short = "?i:o:s:w:n:d:W:ha:b:c:g:";
+    const char *options_short = "?i:o:s:w:n:d:W:ha:b:c:g:D:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
@@ -148,6 +209,7 @@ bool Options::parse(
         {'b', "linear-brightness"},
         {'c', "color-enhancement"},
         {'g', "gamma"},
+        {'D', "deblur"},
         {0, nullptr}
     };
     CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -174,7 +236,7 @@ bool Options::parse(
             saturation_ = std::atoi(clo.value_);
             break;
         case 'w': {
-            bool good = comma_separated_inputs(clo.value_, wb_r_, wb_b_);
+            bool good = comma_separated_doubles_2(clo.value_, wb_r_, wb_b_);
             if (good == false) {
                 return false;
             }
@@ -201,7 +263,13 @@ bool Options::parse(
             color_enhancement_ = std::atof(clo.value_);
             break;
         case 'g': {
-            bool good = comma_separated_inputs(clo.value_, gamma0_, gamma1_);
+            bool good = comma_separated_doubles_2(clo.value_, gamma0_, gamma1_);
+            if (good == false) {
+                return false;
+            }
+            break;
+        } case 'D': {
+            bool good = comma_separated_ints_4(clo.value_, deblur_left_, deblur_top_, deblur_right_, deblur_bottom_);
             if (good == false) {
                 return false;
             }
@@ -259,4 +327,7 @@ void Options::print_usage() {
     LOG("");
     LOG("  -g --gamma g0,g1    : override camera gamma. default 2.22,4.5");
     LOG("     set to 1 1 to disable gamma correction.");
+    LOG("");
+    LOG("  -D --deblur t,l,b,r : deblur image. default 0,0,0,0");
+    LOG("     derive the blur kernel from the patch.");
 }

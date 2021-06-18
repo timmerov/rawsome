@@ -108,6 +108,7 @@ are they maybe literally camera noise?
 #include "log.h"
 #include "options.h"
 
+#include <algorithm>
 #include <cmath>
 #include <ctime>
 #include <iomanip>
@@ -155,6 +156,8 @@ public:
         desaturate_pixels();
         show_special_pixel();
         scale_image();
+        show_special_pixel();
+        deblur_image();
         show_special_pixel();
         adjust_dynamic_range();
         show_special_pixel();
@@ -218,7 +221,7 @@ public:
 
         /**
         we found the bad pixel by inspection.
-        x0,y0 are in final coordinates.
+        x,y are in final coordinates.
         ie after interpolation. hence the /2.
         also after cropping border pixels. hence the +2.
         **/
@@ -419,6 +422,85 @@ public:
 
         /** white balance. **/
         image_.planes_.multiply_sat(cam_mul);
+    }
+
+    void deblur_image() {
+        LOG("deblurring image...");
+        int l = opt_.deblur_left_;
+        int t = opt_.deblur_top_;
+        int r = opt_.deblur_right_;
+        int b = opt_.deblur_bottom_;
+        if (l <= 0 || t <= 0 || r <= 0 || b <= 0 || l >= r || t >= b) {
+            LOG("deblurring is not enabled.");
+            return;
+        }
+        LOG("deblurring patch: "<<l<<","<<t<<","<<r<<","<<b);
+
+        /**
+        we found the patch coordinages by inspection.
+        t,l,b,r are in final coordinates.
+        ie after interpolation. hence the /2.
+        also after cropping border pixels. hence the +2.
+        **/
+        t = t / 2 + 2;
+        l = l / 2 + 2;
+        b = b / 2 + 2;
+        r = r / 2 + 2;
+        int wd = r - l;
+        int ht = b - t;
+        /**
+        we want the patch to have a center.
+        so we ensure the width and height are odd.
+        **/
+        wd |= 1;
+        ht |= 1;
+        r = l + wd;
+        b = t + ht;
+
+        /** copy the image and crop it. expensive. **/
+        Planes patch = image_.planes_;
+        patch.crop(l, t, r, b);
+
+        /** compute the kernel luninance from the patch. **/
+        Plane kernel;
+        kernel.init(wd, ht);
+        compute_luminance(patch, kernel);
+
+        /** this is approximately the number of kernel pixels we want lit up. **/
+        int litup = 1.5 * (wd + ht);
+
+        /** find a threshold that gives us that many pixels. **/
+        Plane sorted = kernel;
+        std::sort(sorted.samples_.begin(), sorted.samples_.end());
+        int sz = wd * ht;
+        int idx = sz - litup - 1;
+        int threshold = sorted.samples_[idx];
+        LOG("deblur threshold: "<<threshold);
+
+        /**
+        obliterate pixels below the threshold.
+        we will need the scaling factor.
+        **/
+        int sum = 0;
+        for (int i = 0; i < sz; ++i) {
+            int s = kernel.samples_[i];
+            if (s < threshold) {
+                kernel.samples_[i] = 0;
+            } else {
+                sum += s;
+            }
+        }
+        LOG("deblur sum: "<<sum);
+
+        /**
+        hack: overwrite the image to ensure we have the right patch.
+        for venus and crescent moon with people on bridge: 4520,1470,4642,1554
+        **/
+        //image_.planes_ = patch;
+        image_.planes_.r_ = kernel;
+        image_.planes_.g1_ = kernel;
+        image_.planes_.g2_ = kernel;
+        image_.planes_.b_ = kernel;
     }
 
     void adjust_dynamic_range() {
