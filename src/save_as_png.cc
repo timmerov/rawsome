@@ -114,10 +114,96 @@ are they maybe literally camera noise?
 #include <iomanip>
 #include <vector>
 #include <sstream>
+#include <thread>
 
 namespace {
 
 const int kFullySaturated = (1<<30)-1;
+
+void convolve_thread(
+    Planes *src,
+    Plane *kernel,
+    Planes *dst,
+    int ystart,
+    int dy
+) {
+    int swd = src->r_.width_;
+    int sht = src->r_.height_;
+    int kwd = kernel->width_;
+    int kht = kernel->height_;
+
+    for (int y1 = ystart; y1 < sht; y1 += dy) {
+        if (y1 % 100 == 0) {
+            LOG("y1="<<y1);
+        }
+        for (int x1 = 0; x1 < swd; ++x1) {
+            int64_t r = 0;
+            int64_t g1 = 0;
+            int64_t g2 = 0;
+            int64_t b = 0;
+            int64_t sumk = 0;
+            for (int yk = 0; yk < kht; ++yk) {
+                int y0 = y1 + yk - kht / 2;
+                if (y0 < 0) {
+                    continue;
+                }
+                if (y0 >= sht) {
+                    break;
+                }
+                for (int xk = 0; xk < kwd; ++xk) {
+                    int x0 = x1 + xk - kwd / 2;
+                    if (x0 < 0) {
+                        continue;
+                    }
+                    if (x0 >= swd) {
+                        break;
+                    }
+                    int64_t k = kernel->get(xk, yk);
+                    if (k > 0) {
+                        r += k * src->r_.get(x0, y0);
+                        g1 += k * src->g1_.get(x0, y0);
+                        g2 += k * src->g2_.get(x0, y0);
+                        b += k * src->b_.get(x0, y0);
+                        sumk += k;
+                    }
+                }
+            }
+            if (sumk > 0) {
+                r /= sumk;
+                g1 /= sumk;
+                g2 /= sumk;
+                b /= sumk;
+            }
+            dst->r_.set(x1, y1, r);
+            dst->g1_.set(x1, y1, g1);
+            dst->g2_.set(x1, y1, g2);
+            dst->b_.set(x1, y1, b);
+        }
+    }
+}
+
+void convolve_mt(
+    Planes &src,
+    Plane &kernel,
+    Planes &dst
+) {
+    std::thread th0(convolve_thread, &src, &kernel, &dst, 0, 8);
+    std::thread th1(convolve_thread, &src, &kernel, &dst, 1, 8);
+    std::thread th2(convolve_thread, &src, &kernel, &dst, 2, 8);
+    std::thread th3(convolve_thread, &src, &kernel, &dst, 3, 8);
+    std::thread th4(convolve_thread, &src, &kernel, &dst, 4, 8);
+    std::thread th5(convolve_thread, &src, &kernel, &dst, 5, 8);
+    std::thread th6(convolve_thread, &src, &kernel, &dst, 6, 8);
+    std::thread th7(convolve_thread, &src, &kernel, &dst, 7, 8);
+    th0.join();
+    th1.join();
+    th2.join();
+    th3.join();
+    th4.join();
+    th5.join();
+    th6.join();
+    th7.join();
+}
 
 class SaveAsPng {
 public:
@@ -468,7 +554,7 @@ public:
         patch.init(0, 0);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
-        int litup = 10 * (kwd + kht);
+        int litup = 2 * (kwd + kht);
 
         /** find a threshold that gives us that many pixels. **/
         Plane sorted = kernel;
@@ -476,13 +562,16 @@ public:
         int ksz = kwd * kht;
         int idx = ksz - litup - 1;
         int threshold = sorted.samples_[idx];
-        LOG("deblur threshold: "<<threshold);
+        int maxs = sorted.samples_[ksz-1];
+        LOG("deblur threshold: "<<threshold<<" max: "<<maxs);
 
         /** obliterate pixels below the threshold. **/
         for (int i = 0; i < ksz; ++i) {
             int s = kernel.samples_[i];
             s -= threshold;
             s = std::max(s, 0);
+            /** arbitrary hard coded value to make the kernel png look pretty. **/
+            s *= 2;
             kernel.samples_[i] = s;
         }
 
@@ -514,14 +603,19 @@ public:
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
         this guy explains: https://stargazerslounge.com/topic/228147-lucy-richardson-deconvolution-so-what-is-it/
-        also on wikipedia.
+        also on wikipedia:
+
+        estimate(i+1) = estimate(i) * ( ( observed / estimate(i) ** kernel ) ** transpose(kernel) )
+
+        1. convolve estimate(i) with kernel.
+        2. elementwise divide observed imaged by 1.
+        3. convolve 2 with transposed kernel.
+        4. elementwise multiply estimate(i) by 3.
         **/
 
         /** transpose the kernel. **/
         Plane transpose = kernel;
         transpose.transpose();
-        int twd = transpose.width_;
-        int tht = transpose.height_;
 
         /** start with 50% gray. **/
         Planes estimate0;
@@ -547,149 +641,69 @@ public:
             LOG("iteration: "<<n<<" of "<<niterations);
 
             /** convolve the first estimate with blur kernel **/
-            for (int y1 = 0; y1 < sht; ++y1) {
-                if (y1 % 100 == 0) {
-                    LOG("y1="<<y1);
-                }
-                for (int x1 = 0; x1 < swd; ++x1) {
-                    int64_t r = 0;
-                    int64_t g1 = 0;
-                    int64_t g2 = 0;
-                    int64_t b = 0;
-                    int64_t sumk = 0;
-                    for (int yk = 0; yk < kht; ++yk) {
-                        for (int xk = 0; xk < kwd; ++xk) {
-                            int x0 = x1 + xk - kwd / 2;
-                            int y0 = y1 + yk - kht / 2;
-                            if (x0 < 0 || x0 >= swd || y0 < 0 || y0 >= sht) {
-                                continue;
-                            }
-                            int64_t k = kernel.get(xk, yk);
-                            if (k > 0) {
-                                r += k * estimate0.r_.get(x0, y0);
-                                g1 += k * estimate0.g1_.get(x0, y0);
-                                g2 += k * estimate0.g2_.get(x0, y0);
-                                b += k * estimate0.b_.get(x0, y0);
-                                sumk += k;
-                            }
-                        }
-                    }
-                    if (sumk > 0) {
-                        r /= sumk;
-                        g1 /= sumk;
-                        g2 /= sumk;
-                        b /= sumk;
-                    }
-                    estimate1.r_.set(x1, y1, r);
-                    estimate1.g1_.set(x1, y1, g1);
-                    estimate1.g2_.set(x1, y1, g2);
-                    estimate1.b_.set(x1, y1, b);
-                }
-            }
+            convolve_mt(estimate0, kernel, estimate1);
 
             /** divide the observed image by the result. **/
-            for (int y = 0; y < sht; ++y) {
-                for (int x = 0; x < swd; ++x) {
-                    int64_t r = image_.planes_.r_.get(x, y);
-                    int64_t g1 = image_.planes_.g1_.get(x, y);
-                    int64_t g2 = image_.planes_.g2_.get(x, y);
-                    int64_t b = image_.planes_.b_.get(x, y);
-                    r *= 65536;
-                    g1 *= 65536;
-                    g2 *= 65536;
-                    b *= 65536;
-                    int64_t er = estimate1.r_.get(x, y);
-                    int64_t eg1 = estimate1.g1_.get(x, y);
-                    int64_t eg2 = estimate1.g2_.get(x, y);
-                    int64_t eb = estimate1.b_.get(x, y);
-                    if (er == 0) {
-                        r = 0;
-                    } else {
-                        r /= er;
-                    }
-                    if (eg1 == 0) {
-                        g1 = 0;
-                    } else {
-                        g1 /= eg1;
-                    }
-                    if (eg2 == 0) {
-                        g2 = 0;
-                    } else {
-                        g2 /= eg2;
-                    }
-                    if (eb == 0) {
-                        b = 0;
-                    } else {
-                        b /= eb;
-                    }
-                    estimate1.r_.set(x, y, r);
-                    estimate1.g1_.set(x, y, g1);
-                    estimate1.g2_.set(x, y, g2);
-                    estimate1.b_.set(x, y, b);
+            for (int i = 0; i < ssz; ++i) {
+                int64_t r = image_.planes_.r_.samples_[i];
+                int64_t g1 = image_.planes_.g1_.samples_[i];
+                int64_t g2 = image_.planes_.g2_.samples_[i];
+                int64_t b = image_.planes_.b_.samples_[i];
+                r *= 65536;
+                g1 *= 65536;
+                g2 *= 65536;
+                b *= 65536;
+                int64_t er = estimate1.r_.samples_[i];
+                int64_t eg1 = estimate1.g1_.samples_[i];
+                int64_t eg2 = estimate1.g2_.samples_[i];
+                int64_t eb = estimate1.b_.samples_[i];
+                if (er == 0) {
+                    r = 0;
+                } else {
+                    r /= er;
                 }
+                if (eg1 == 0) {
+                    g1 = 0;
+                } else {
+                    g1 /= eg1;
+                }
+                if (eg2 == 0) {
+                    g2 = 0;
+                } else {
+                    g2 /= eg2;
+                }
+                if (eb == 0) {
+                    b = 0;
+                } else {
+                    b /= eb;
+                }
+                estimate1.r_.samples_[i] = r;
+                estimate1.g1_.samples_[i] = g1;
+                estimate1.g2_.samples_[i] = g2;
+                estimate1.b_.samples_[i] = b;
             }
 
             /** convolve the scaling factor with transpose of the blur kernel **/
-            for (int y1 = 0; y1 < sht; ++y1) {
-                if (y1 % 100 == 0) {
-                    LOG("y1="<<y1);
-                }
-                for (int x1 = 0; x1 < swd; ++x1) {
-                    int64_t r = 0;
-                    int64_t g1 = 0;
-                    int64_t g2 = 0;
-                    int64_t b = 0;
-                    int64_t sumt = 0;
-                    for (int yt = 0; yt < tht; ++yt) {
-                        for (int xt = 0; xt < twd; ++xt) {
-                            int x0 = x1 + xt - twd / 2;
-                            int y0 = y1 + yt - tht / 2;
-                            if (x0 < 0 || x0 >= swd || y0 < 0 || y0 >= sht) {
-                                continue;
-                            }
-                            int64_t t = kernel.get(xt, yt);
-                            if (t > 0) {
-                                r += t * estimate1.r_.get(x0, y0);
-                                g1 += t * estimate1.g1_.get(x0, y0);
-                                g2 += t * estimate1.g2_.get(x0, y0);
-                                b += t * estimate1.b_.get(x0, y0);
-                                sumt += t;
-                            }
-                        }
-                    }
-                    if (sumt > 0) {
-                        r /= sumt;
-                        g1 /= sumt;
-                        g2 /= sumt;
-                        b /= sumt;
-                    }
-                    estimate2.r_.set(x1, y1, r);
-                    estimate2.g1_.set(x1, y1, g1);
-                    estimate2.g2_.set(x1, y1, g2);
-                    estimate2.b_.set(x1, y1, b);
-                }
-            }
+            convolve_mt(estimate1, transpose, estimate2);
 
             /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
-            for (int y = 0; y < sht; ++y) {
-                for (int x = 0; x < swd; ++x) {
-                    int64_t r = estimate0.r_.get(x, y);
-                    int64_t g1 = estimate0.g1_.get(x, y);
-                    int64_t g2 = estimate0.g2_.get(x, y);
-                    int64_t b = estimate0.b_.get(x, y);
-                    r *= estimate2.r_.get(x, y);
-                    g1 *= estimate2.g1_.get(x, y);
-                    g2 *= estimate2.g2_.get(x, y);
-                    b *= estimate2.b_.get(x, y);
-                    r /= 65536;
-                    g1 /= 65536;
-                    g2 /= 65536;
-                    b /= 65536;
-                    estimate0.r_.set(x, y, r);
-                    estimate0.g1_.set(x, y, g1);
-                    estimate0.g2_.set(x, y, g2);
-                    estimate0.b_.set(x, y, b);
-                }
+            for (int i = 0; i < ssz; ++i) {
+                int64_t r = estimate0.r_.samples_[i];
+                int64_t g1 = estimate0.g1_.samples_[i];
+                int64_t g2 = estimate0.g2_.samples_[i];
+                int64_t b = estimate0.b_.samples_[i];
+                r *= estimate2.r_.samples_[i];
+                g1 *= estimate2.g1_.samples_[i];
+                g2 *= estimate2.g2_.samples_[i];
+                b *= estimate2.b_.samples_[i];
+                r /= 65536;
+                g1 /= 65536;
+                g2 /= 65536;
+                b /= 65536;
+                estimate0.r_.samples_[i] = r;
+                estimate0.g1_.samples_[i] = g1;
+                estimate0.g2_.samples_[i] = g2;
+                estimate0.b_.samples_[i] = b;
             }
         }
 
