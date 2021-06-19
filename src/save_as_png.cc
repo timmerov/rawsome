@@ -468,7 +468,7 @@ public:
         patch.init(0, 0);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
-        int litup = 1.5 * (kwd + kht);
+        int litup = 10 * (kwd + kht);
 
         /** find a threshold that gives us that many pixels. **/
         Plane sorted = kernel;
@@ -486,6 +486,20 @@ public:
             kernel.samples_[i] = s;
         }
 
+        /** non-linear scale pixels. **/
+        /*int maxs = 0;
+        for (int i = 0; i < ksz; ++i) {
+            int s = kernel.samples_[i];
+            maxs = std::max(maxs, s);
+        }
+        for (int i = 0; i < ksz; ++i) {
+            int s = kernel.samples_[i];
+            double d = double(s) / double(maxs);
+            d *= d;
+            d *= maxs;
+            kernel.samples_[i] = d;
+        }*/
+
         /**
         hack: overwrite the image to ensure we have the right patch.
         for venus and crescent moon with people on bridge: 4520,1470,4642,1554
@@ -494,7 +508,8 @@ public:
         /*image_.planes_.r_ = kernel;
         image_.planes_.g1_ = kernel;
         image_.planes_.g2_ = kernel;
-        image_.planes_.b_ = kernel;*/
+        image_.planes_.b_ = kernel;
+        return;*/
 
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
@@ -508,11 +523,10 @@ public:
         int twd = transpose.width_;
         int tht = transpose.height_;
 
-        /** start with the observed image. **/
-        Planes estimate0 = image_.planes_;
+        /** start with 50% gray. **/
+        Planes estimate0;
         int swd = image_.planes_.r_.width_;
         int sht = image_.planes_.r_.height_;
-        /*
         estimate0.init(swd, sht);
         int ssz = swd * sht;
         for (int i = 0; i < ssz; ++i) {
@@ -521,7 +535,6 @@ public:
             estimate0.g2_.samples_[i] = 32768;
             estimate0.b_.samples_[i] = 32768;
         }
-        */
 
         /** allocate temporary storage. **/
         Planes estimate1;
@@ -529,7 +542,7 @@ public:
         estimate1.init(swd, sht);
         estimate2.init(swd, sht);
 
-        int niterations = 25;
+        int niterations = 1;
         for (int n = 1; n <= niterations; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
