@@ -597,7 +597,16 @@ public:
             kernel.samples_[i] = d;
         }*/
 
-        /** apparently we need to rotate the blur kernel 180 degrees. **/
+        /**
+        apparently this method generates a kernel that's flipped x and y.
+        ie rotated 180 degrees.
+        so we need to correct that.
+        but...
+        we also need the flipped version of the kernel.
+        so save the flipped version.
+        then unflip the kernel.
+        **/
+        Plane flipped = kernel;
         rotate_180(kernel);
 
         /**
@@ -616,11 +625,11 @@ public:
         this guy explains: https://stargazerslounge.com/topic/228147-lucy-richardson-deconvolution-so-what-is-it/
         also on wikipedia:
 
-        estimate(i+1) = estimate(i) * ( ( observed / estimate(i) ** kernel ) ** transpose(kernel) )
+        estimate(i+1) = estimate(i) * ( ( observed / estimate(i) ** kernel ) ** flipped(kernel) )
 
         1. convolve estimate(i) with kernel.
         2. elementwise divide observed imaged by 1.
-        3. convolve 2 with transposed kernel.
+        3. convolve 2 with flipped kernel.
         4. elementwise multiply estimate(i) by 3.
 
         okay so there seems to be a kinda stupid problem.
@@ -628,10 +637,6 @@ public:
         quite likely the estimate(i) pixels are also black.
         now you're dividing 0/0.
         **/
-
-        /** transpose the kernel. **/
-        Plane transpose = kernel;
-        transpose.transpose();
 
         /** start with 50% gray. **/
         Planes estimate0;
@@ -670,7 +675,6 @@ public:
         convolve_mt(estimate1, kernel, image_.planes_);
         return;*/
 
-
         /**
         offset and scale the source image to be gray to white instead of black to white.
         this avoids the 0/0 problem above.
@@ -691,7 +695,7 @@ public:
             image_.planes_.b_.samples_[i] = b;
         }
 
-        int niterations = 1;
+        int niterations = 10;
         for (int n = 1; n <= niterations; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
@@ -742,8 +746,8 @@ public:
                 estimate1.b_.samples_[i] = b;
             }
 
-            /** convolve the scaling factor with transpose of the blur kernel **/
-            convolve_mt(estimate1, transpose, estimate2);
+            /** convolve the scaling factor with the flipped blur kernel **/
+            convolve_mt(estimate1, flipped, estimate2);
 
             /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
             for (int i = 0; i < ssz; ++i) {
@@ -760,7 +764,7 @@ public:
                 the scaling factor should be about 1.
                 make it closer to 1.
                 **/
-                double reduction = 1.0;
+                double reduction = 0.3;
                 r = (r - 1.0) * reduction + 1.0;
                 g1 = (g1 - 1.0) * reduction + 1.0;
                 g2 = (g2 - 1.0) * reduction + 1.0;
