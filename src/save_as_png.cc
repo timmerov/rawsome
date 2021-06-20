@@ -553,6 +553,14 @@ public:
         compute_luminance(patch, kernel);
         patch.init(0, 0);
 
+        /**
+        hack: the image is really freaking big compared to the patch.
+        crop it.
+        **/
+        LOG("deblur hack! cropping image");
+        const int margin = 300;
+        image_.planes_.crop(l - margin, t - margin, r + margin, b + margin);
+
         /** this is approximately the number of kernel pixels we want lit up. **/
         int litup = 1 * (kwd + kht);
 
@@ -614,6 +622,11 @@ public:
         2. elementwise divide observed imaged by 1.
         3. convolve 2 with transposed kernel.
         4. elementwise multiply estimate(i) by 3.
+
+        okay so there seems to be a kinda stupid problem.
+        what do you do where the observed pixels are black?
+        quite likely the estimate(i) pixels are also black.
+        now you're dividing 0/0.
         **/
 
         /** transpose the kernel. **/
@@ -657,7 +670,28 @@ public:
         convolve_mt(estimate1, kernel, image_.planes_);
         return;*/
 
-        int niterations = 5;
+
+        /**
+        offset and scale the source image to be gray to white instead of black to white.
+        this avoids the 0/0 problem above.
+        **/
+        LOG("deblur hack! changing image range to gray to white.");
+        for (int i = 0; i < ssz; ++i) {
+            int r = image_.planes_.r_.samples_[i];
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            int b = image_.planes_.b_.samples_[i];
+            r = r / 2 + 32768;
+            g1 = g1 / 2 + 32768;
+            g2 = g2 / 2 + 32768;
+            b = b / 2 + 32768;
+            image_.planes_.r_.samples_[i] = r;
+            image_.planes_.g1_.samples_[i] = g1;
+            image_.planes_.g2_.samples_[i] = g2;
+            image_.planes_.b_.samples_[i] = b;
+        }
+
+        int niterations = 1;
         for (int n = 1; n <= niterations; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
@@ -713,18 +747,29 @@ public:
 
             /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
             for (int i = 0; i < ssz; ++i) {
-                double r = estimate0.r_.samples_[i];
-                double g1 = estimate0.g1_.samples_[i];
-                double g2 = estimate0.g2_.samples_[i];
-                double b = estimate0.b_.samples_[i];
-                r *= estimate2.r_.samples_[i];
-                g1 *= estimate2.g1_.samples_[i];
-                g2 *= estimate2.g2_.samples_[i];
-                b *= estimate2.b_.samples_[i];
+                double r = estimate2.r_.samples_[i];
+                double g1 = estimate2.g1_.samples_[i];
+                double g2 = estimate2.g2_.samples_[i];
+                double b = estimate2.b_.samples_[i];
                 r /= 65536;
                 g1 /= 65536;
                 g2 /= 65536;
                 b /= 65536;
+
+                /**
+                the scaling factor should be about 1.
+                make it closer to 1.
+                **/
+                double reduction = 1.0;
+                r = (r - 1.0) * reduction + 1.0;
+                g1 = (g1 - 1.0) * reduction + 1.0;
+                g2 = (g2 - 1.0) * reduction + 1.0;
+                b = (b - 1.0) * reduction + 1.0;
+
+                r *= estimate0.r_.samples_[i];
+                g1 *= estimate0.g1_.samples_[i];
+                g2 *= estimate0.g2_.samples_[i];
+                b *= estimate0.b_.samples_[i];
                 estimate0.r_.samples_[i] = r;
                 estimate0.g1_.samples_[i] = g1;
                 estimate0.g2_.samples_[i] = g2;
@@ -732,8 +777,24 @@ public:
             }
         }
 
-        /** hack: save it. **/
+        /** save it. **/
         image_.planes_ = std::move(estimate0);
+
+        LOG("deblur hack! changing image range to black to white.");
+        for (int i = 0; i < ssz; ++i) {
+            int r = image_.planes_.r_.samples_[i];
+            int g1 = image_.planes_.g1_.samples_[i];
+            int g2 = image_.planes_.g2_.samples_[i];
+            int b = image_.planes_.b_.samples_[i];
+            r = (r - 32768) * 2;
+            g1 = (g1 - 32768) * 2;
+            g2 = (g2 - 32768) * 2;
+            b = (b - 32768) * 2;
+            image_.planes_.r_.samples_[i] = r;
+            image_.planes_.g1_.samples_[i] = g1;
+            image_.planes_.g2_.samples_[i] = g2;
+            image_.planes_.b_.samples_[i] = b;
+        }
     }
 
     void rotate_180(
