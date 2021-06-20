@@ -137,11 +137,11 @@ void convolve_thread(
             LOG("y1="<<y1);
         }
         for (int x1 = 0; x1 < swd; ++x1) {
-            int64_t r = 0;
-            int64_t g1 = 0;
-            int64_t g2 = 0;
-            int64_t b = 0;
-            int64_t sumk = 0;
+            double r = 0;
+            double g1 = 0;
+            double g2 = 0;
+            double b = 0;
+            double sumk = 0;
             for (int yk = 0; yk < kht; ++yk) {
                 int y0 = y1 + yk - kht / 2;
                 if (y0 < 0) {
@@ -158,7 +158,7 @@ void convolve_thread(
                     if (x0 >= swd) {
                         break;
                     }
-                    int64_t k = kernel->get(xk, yk);
+                    double k = kernel->get(xk, yk);
                     if (k > 0) {
                         r += k * src->r_.get(x0, y0);
                         g1 += k * src->g1_.get(x0, y0);
@@ -554,7 +554,7 @@ public:
         patch.init(0, 0);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
-        int litup = 2 * (kwd + kht);
+        int litup = 1 * (kwd + kht);
 
         /** find a threshold that gives us that many pixels. **/
         Plane sorted = kernel;
@@ -571,7 +571,7 @@ public:
             s -= threshold;
             s = std::max(s, 0);
             /** arbitrary hard coded value to make the kernel png look pretty. **/
-            s *= 2;
+            //s *= 2;
             kernel.samples_[i] = s;
         }
 
@@ -588,6 +588,9 @@ public:
             d *= maxs;
             kernel.samples_[i] = d;
         }*/
+
+        /** apparently we need to rotate the blur kernel 180 degrees. **/
+        rotate_180(kernel);
 
         /**
         hack: overwrite the image to ensure we have the right patch.
@@ -636,27 +639,49 @@ public:
         estimate1.init(swd, sht);
         estimate2.init(swd, sht);
 
-        int niterations = 1;
+        /**
+        hack: check the blur kernel.
+        a single white pixel venus should smear to match the observed image.
+        **/
+        /*for (int i = 0; i < ssz; ++i) {
+            estimate1.r_.samples_[i] = 0;
+            estimate1.g1_.samples_[i] = 0;
+            estimate1.g2_.samples_[i] = 0;
+            estimate1.b_.samples_[i] = 0;
+        }
+        int ix = ssz / 2;
+        estimate1.r_.samples_[ix] = 65535;
+        estimate1.g1_.samples_[ix] = 65535;
+        estimate1.g2_.samples_[ix] = 65535;
+        estimate1.b_.samples_[ix] = 65535;
+        convolve_mt(estimate1, kernel, image_.planes_);
+        return;*/
+
+        int niterations = 5;
         for (int n = 1; n <= niterations; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
             /** convolve the first estimate with blur kernel **/
-            convolve_mt(estimate0, kernel, estimate1);
+            if (n == 1) {
+                estimate1 = estimate0;
+            } else {
+                convolve_mt(estimate0, kernel, estimate1);
+            }
 
             /** divide the observed image by the result. **/
             for (int i = 0; i < ssz; ++i) {
-                int64_t r = image_.planes_.r_.samples_[i];
-                int64_t g1 = image_.planes_.g1_.samples_[i];
-                int64_t g2 = image_.planes_.g2_.samples_[i];
-                int64_t b = image_.planes_.b_.samples_[i];
+                double r = image_.planes_.r_.samples_[i];
+                double g1 = image_.planes_.g1_.samples_[i];
+                double g2 = image_.planes_.g2_.samples_[i];
+                double b = image_.planes_.b_.samples_[i];
                 r *= 65536;
                 g1 *= 65536;
                 g2 *= 65536;
                 b *= 65536;
-                int64_t er = estimate1.r_.samples_[i];
-                int64_t eg1 = estimate1.g1_.samples_[i];
-                int64_t eg2 = estimate1.g2_.samples_[i];
-                int64_t eb = estimate1.b_.samples_[i];
+                double er = estimate1.r_.samples_[i];
+                double eg1 = estimate1.g1_.samples_[i];
+                double eg2 = estimate1.g2_.samples_[i];
+                double eb = estimate1.b_.samples_[i];
                 if (er == 0) {
                     r = 0;
                 } else {
@@ -688,10 +713,10 @@ public:
 
             /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
             for (int i = 0; i < ssz; ++i) {
-                int64_t r = estimate0.r_.samples_[i];
-                int64_t g1 = estimate0.g1_.samples_[i];
-                int64_t g2 = estimate0.g2_.samples_[i];
-                int64_t b = estimate0.b_.samples_[i];
+                double r = estimate0.r_.samples_[i];
+                double g1 = estimate0.g1_.samples_[i];
+                double g2 = estimate0.g2_.samples_[i];
+                double b = estimate0.b_.samples_[i];
                 r *= estimate2.r_.samples_[i];
                 g1 *= estimate2.g1_.samples_[i];
                 g2 *= estimate2.g2_.samples_[i];
@@ -709,6 +734,35 @@ public:
 
         /** hack: save it. **/
         image_.planes_ = std::move(estimate0);
+    }
+
+    void rotate_180(
+        Plane &src
+    ) {
+        flip_x(src);
+        src.transpose();
+        flip_x(src);
+        src.transpose();
+    }
+
+    void flip_x(
+        Plane &src
+    ) {
+        int wd = src.width_;
+        int ht = src.height_;
+        Plane dst;
+        for (int y = 0; y < ht; ++y) {
+            int xl = 0;
+            int xr = wd - 1;
+            while (xl < xr) {
+                int sl = src.get(xl, y);
+                int sr = src.get(xr, y);
+                src.set(xl, y, sr);
+                src.set(xr, y, sl);
+                ++xl;
+                --xr;
+            }
+        }
     }
 
     void adjust_dynamic_range() {
