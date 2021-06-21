@@ -159,7 +159,7 @@ void convolve_thread(
                         break;
                     }
                     double k = kernel->get(xk, yk);
-                    if (k > 0) {
+                    if (k != 0) {
                         r += k * src->r_.get(x0, y0);
                         g1 += k * src->g1_.get(x0, y0);
                         g2 += k * src->g2_.get(x0, y0);
@@ -579,23 +579,45 @@ public:
             s -= threshold;
             s = std::max(s, 0);
             /** arbitrary hard coded value to make the kernel png look pretty. **/
-            //s *= 2;
+            s *= 2;
             kernel.samples_[i] = s;
         }
 
-        /** non-linear scale pixels. **/
-        /*int maxs = 0;
-        for (int i = 0; i < ksz; ++i) {
-            int s = kernel.samples_[i];
-            maxs = std::max(maxs, s);
-        }
-        for (int i = 0; i < ksz; ++i) {
-            int s = kernel.samples_[i];
-            double d = double(s) / double(maxs);
-            d *= d;
-            d *= maxs;
-            kernel.samples_[i] = d;
-        }*/
+        /** sharpen the blur kernel **/
+        Plane sharpen;
+        sharpen.init(3, 3);
+        /** weighted sharpen **/
+        const int wt = 1;
+        sharpen.samples_[0] = wt * (0 - 1) + 0;
+        sharpen.samples_[1] = wt * (0 - 2) + 0;
+        sharpen.samples_[4] = wt * (12 - 0) + 12;
+        /** symmetric **/
+        sharpen.samples_[2] = sharpen.samples_[0];
+        sharpen.samples_[3] = sharpen.samples_[1];
+        sharpen.samples_[5] = sharpen.samples_[1];
+        sharpen.samples_[6] = sharpen.samples_[0];
+        sharpen.samples_[7] = sharpen.samples_[1];
+        sharpen.samples_[8] = sharpen.samples_[0];
+        Planes temp1;
+        Planes temp2;
+        temp1.r_ = kernel;
+        temp1.g1_ = kernel;
+        temp1.g2_ = kernel;
+        temp1.b_ = kernel;
+        temp2 = temp1;
+        convolve_mt(temp1, sharpen, temp2);
+        kernel = temp2.r_;
+
+        /**
+        hack: overwrite the image to ensure we have the right patch.
+        for venus and crescent moon with people on bridge: 4520,1470,4642,1554
+        **/
+        //image_.planes_ = patch;
+        /*image_.planes_.r_ = kernel;
+        image_.planes_.g1_ = kernel;
+        image_.planes_.g2_ = kernel;
+        image_.planes_.b_ = kernel;
+        return;*/
 
         /**
         apparently this method generates a kernel that's flipped x and y.
@@ -608,17 +630,6 @@ public:
         **/
         Plane flipped = kernel;
         rotate_180(kernel);
-
-        /**
-        hack: overwrite the image to ensure we have the right patch.
-        for venus and crescent moon with people on bridge: 4520,1470,4642,1554
-        **/
-        //image_.planes_ = patch;
-        /*image_.planes_.r_ = kernel;
-        image_.planes_.g1_ = kernel;
-        image_.planes_.g2_ = kernel;
-        image_.planes_.b_ = kernel;
-        return;*/
 
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
@@ -695,7 +706,7 @@ public:
             image_.planes_.b_.samples_[i] = b;
         }
 
-        int niterations = 10;
+        int niterations = 3;
         for (int n = 1; n <= niterations; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
@@ -764,7 +775,7 @@ public:
                 the scaling factor should be about 1.
                 make it closer to 1.
                 **/
-                double reduction = 0.3;
+                double reduction = 0.9;
                 r = (r - 1.0) * reduction + 1.0;
                 g1 = (g1 - 1.0) * reduction + 1.0;
                 g2 = (g2 - 1.0) * reduction + 1.0;
