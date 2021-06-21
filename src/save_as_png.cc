@@ -543,23 +543,19 @@ public:
         r = l + kwd;
         b = t + kht;
 
-        /** copy the image and crop it. expensive. **/
+        /** copy the image and crop it. **/
         Planes patch = image_.planes_;
         patch.crop(l, t, r, b);
 
-        /** compute the kernel luninance from the patch. **/
+        /**
+        estimate the point spread function (the blur kernel)
+        from the luninance of the patch.
+        threshold it so most of the values are zero.
+        **/
         Plane kernel;
         kernel.init(kwd, kht);
         compute_luminance(patch, kernel);
         patch.init(0, 0);
-
-        /**
-        hack: the image is really freaking big compared to the patch.
-        crop it.
-        **/
-        LOG("deblur hack! cropping image");
-        const int margin = 300;
-        image_.planes_.crop(l - margin, t - margin, r + margin, b + margin);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
         int litup = 1 * (kwd + kht);
@@ -583,31 +579,6 @@ public:
             kernel.samples_[i] = s;
         }
 
-        /** sharpen the blur kernel **/
-        Plane sharpen;
-        sharpen.init(3, 3);
-        /** weighted sharpen **/
-        const int wt = 1;
-        sharpen.samples_[0] = wt * (0 - 1) + 0;
-        sharpen.samples_[1] = wt * (0 - 2) + 0;
-        sharpen.samples_[4] = wt * (12 - 0) + 12;
-        /** symmetric **/
-        sharpen.samples_[2] = sharpen.samples_[0];
-        sharpen.samples_[3] = sharpen.samples_[1];
-        sharpen.samples_[5] = sharpen.samples_[1];
-        sharpen.samples_[6] = sharpen.samples_[0];
-        sharpen.samples_[7] = sharpen.samples_[1];
-        sharpen.samples_[8] = sharpen.samples_[0];
-        Planes temp1;
-        Planes temp2;
-        temp1.r_ = kernel;
-        temp1.g1_ = kernel;
-        temp1.g2_ = kernel;
-        temp1.b_ = kernel;
-        temp2 = temp1;
-        convolve_mt(temp1, sharpen, temp2);
-        kernel = temp2.r_;
-
         /**
         hack: overwrite the image to ensure we have the right patch.
         for venus and crescent moon with people on bridge: 4520,1470,4642,1554
@@ -628,8 +599,17 @@ public:
         so save the flipped version.
         then unflip the kernel.
         **/
-        Plane flipped = kernel;
-        rotate_180(kernel);
+        Plane lenrek = kernel;
+        rotate_180(lenrek);
+
+        /**
+        hack: the image is really freaking big compared to the patch.
+        crop it.
+        **/
+        LOG("deblur hack! cropping image");
+        const int margin = 2 * std::max(kwd, kht);
+        Planes cropped_image = image_.planes_;
+        cropped_image.crop(l - margin, t - margin, r + margin, b + margin);
 
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
@@ -649,62 +629,33 @@ public:
         now you're dividing 0/0.
         **/
 
+        /** allocate temporary storage. **/
+        Planes estimate;
+        Planes blurred;
+        Planes error;
+        Planes correction;
+        int swd = cropped_image.r_.width_;
+        int sht = cropped_image.r_.height_;
+        estimate.init(swd, sht);
+        blurred.init(swd, sht);
+        error.init(swd, sht);
+        correction.init(swd, sht);
+
         /** start with 50% gray. **/
-        Planes estimate0;
-        int swd = image_.planes_.r_.width_;
-        int sht = image_.planes_.r_.height_;
-        estimate0.init(swd, sht);
         int ssz = swd * sht;
         for (int i = 0; i < ssz; ++i) {
-            estimate0.r_.samples_[i] = 32768;
-            estimate0.g1_.samples_[i] = 32768;
-            estimate0.g2_.samples_[i] = 32768;
-            estimate0.b_.samples_[i] = 32768;
+            estimate.r_.samples_[i] = 32768;
+            estimate.g1_.samples_[i] = 32768;
+            estimate.g2_.samples_[i] = 32768;
+            estimate.b_.samples_[i] = 32768;
         }
-
-        /** allocate temporary storage. **/
-        Planes estimate1;
-        Planes estimate2;
-        estimate1.init(swd, sht);
-        estimate2.init(swd, sht);
-
-        /**
-        hack: check the blur kernel.
-        a single white pixel venus should smear to match the observed image.
-        **/
-        /*for (int i = 0; i < ssz; ++i) {
-            estimate1.r_.samples_[i] = 0;
-            estimate1.g1_.samples_[i] = 0;
-            estimate1.g2_.samples_[i] = 0;
-            estimate1.b_.samples_[i] = 0;
-        }
-        int ix = ssz / 2;
-        estimate1.r_.samples_[ix] = 65535;
-        estimate1.g1_.samples_[ix] = 65535;
-        estimate1.g2_.samples_[ix] = 65535;
-        estimate1.b_.samples_[ix] = 65535;
-        convolve_mt(estimate1, kernel, image_.planes_);
-        return;*/
 
         /**
         offset and scale the source image to be gray to white instead of black to white.
         this avoids the 0/0 problem above.
         **/
         LOG("deblur hack! changing image range to gray to white.");
-        for (int i = 0; i < ssz; ++i) {
-            int r = image_.planes_.r_.samples_[i];
-            int g1 = image_.planes_.g1_.samples_[i];
-            int g2 = image_.planes_.g2_.samples_[i];
-            int b = image_.planes_.b_.samples_[i];
-            r = r / 2 + 32768;
-            g1 = g1 / 2 + 32768;
-            g2 = g2 / 2 + 32768;
-            b = b / 2 + 32768;
-            image_.planes_.r_.samples_[i] = r;
-            image_.planes_.g1_.samples_[i] = g1;
-            image_.planes_.g2_.samples_[i] = g2;
-            image_.planes_.b_.samples_[i] = b;
-        }
+        black_to_gray(cropped_image);
 
         int niterations = 3;
         for (int n = 1; n <= niterations; ++n) {
@@ -712,104 +663,26 @@ public:
 
             /** convolve the first estimate with blur kernel **/
             if (n == 1) {
-                estimate1 = estimate0;
+                blurred = estimate;
             } else {
-                convolve_mt(estimate0, kernel, estimate1);
+                convolve_mt(estimate, kernel, blurred);
             }
 
-            /** divide the observed image by the result. **/
-            for (int i = 0; i < ssz; ++i) {
-                double r = image_.planes_.r_.samples_[i];
-                double g1 = image_.planes_.g1_.samples_[i];
-                double g2 = image_.planes_.g2_.samples_[i];
-                double b = image_.planes_.b_.samples_[i];
-                r *= 65536;
-                g1 *= 65536;
-                g2 *= 65536;
-                b *= 65536;
-                double er = estimate1.r_.samples_[i];
-                double eg1 = estimate1.g1_.samples_[i];
-                double eg2 = estimate1.g2_.samples_[i];
-                double eb = estimate1.b_.samples_[i];
-                if (er == 0) {
-                    r = 0;
-                } else {
-                    r /= er;
-                }
-                if (eg1 == 0) {
-                    g1 = 0;
-                } else {
-                    g1 /= eg1;
-                }
-                if (eg2 == 0) {
-                    g2 = 0;
-                } else {
-                    g2 /= eg2;
-                }
-                if (eb == 0) {
-                    b = 0;
-                } else {
-                    b /= eb;
-                }
-                estimate1.r_.samples_[i] = r;
-                estimate1.g1_.samples_[i] = g1;
-                estimate1.g2_.samples_[i] = g2;
-                estimate1.b_.samples_[i] = b;
-            }
+            /** divide the observed image by the blurred estimate. **/
+            divide(cropped_image, blurred, error);
 
             /** convolve the scaling factor with the flipped blur kernel **/
-            convolve_mt(estimate1, flipped, estimate2);
+            convolve_mt(error, lenrek, correction);
 
-            /** multiply the current estimate by the convolved scaling factor to get the new estimate. **/
-            for (int i = 0; i < ssz; ++i) {
-                double r = estimate2.r_.samples_[i];
-                double g1 = estimate2.g1_.samples_[i];
-                double g2 = estimate2.g2_.samples_[i];
-                double b = estimate2.b_.samples_[i];
-                r /= 65536;
-                g1 /= 65536;
-                g2 /= 65536;
-                b /= 65536;
-
-                /**
-                the scaling factor should be about 1.
-                make it closer to 1.
-                **/
-                double reduction = 0.9;
-                r = (r - 1.0) * reduction + 1.0;
-                g1 = (g1 - 1.0) * reduction + 1.0;
-                g2 = (g2 - 1.0) * reduction + 1.0;
-                b = (b - 1.0) * reduction + 1.0;
-
-                r *= estimate0.r_.samples_[i];
-                g1 *= estimate0.g1_.samples_[i];
-                g2 *= estimate0.g2_.samples_[i];
-                b *= estimate0.b_.samples_[i];
-                estimate0.r_.samples_[i] = r;
-                estimate0.g1_.samples_[i] = g1;
-                estimate0.g2_.samples_[i] = g2;
-                estimate0.b_.samples_[i] = b;
-            }
+            /** multiply the estimate by the correction to get the new estimate. **/
+            multiply(estimate, correction, 0.9);
         }
-
-        /** save it. **/
-        image_.planes_ = std::move(estimate0);
 
         LOG("deblur hack! changing image range to black to white.");
-        for (int i = 0; i < ssz; ++i) {
-            int r = image_.planes_.r_.samples_[i];
-            int g1 = image_.planes_.g1_.samples_[i];
-            int g2 = image_.planes_.g2_.samples_[i];
-            int b = image_.planes_.b_.samples_[i];
-            r = (r - 32768) * 2;
-            g1 = (g1 - 32768) * 2;
-            g2 = (g2 - 32768) * 2;
-            b = (b - 32768) * 2;
-            image_.planes_.r_.samples_[i] = r;
-            image_.planes_.g1_.samples_[i] = g1;
-            image_.planes_.g2_.samples_[i] = g2;
-            image_.planes_.b_.samples_[i] = b;
-        }
+        gray_to_black(estimate);
+
+        /** save it. **/
+        image_.planes_ = std::move(estimate);
     }
 
     void rotate_180(
@@ -838,6 +711,107 @@ public:
                 ++xl;
                 --xr;
             }
+        }
+    }
+
+    void black_to_gray(
+        Planes &planes
+    ) {
+        black_to_gray(planes.r_);
+        black_to_gray(planes.g1_);
+        black_to_gray(planes.g2_);
+        black_to_gray(planes.b_);
+    }
+
+    void black_to_gray(
+        Plane &plane
+    ) {
+        int ssz = plane.width_ * plane.height_;
+        for (int i = 0; i < ssz; ++i) {
+            int s = plane.samples_[i];
+            s = s / 2 + 32768;
+            plane.samples_[i] = s;
+        }
+    }
+
+    void gray_to_black(
+        Planes &planes
+    ) {
+        gray_to_black(planes.r_);
+        gray_to_black(planes.g1_);
+        gray_to_black(planes.g2_);
+        gray_to_black(planes.b_);
+    }
+
+    void gray_to_black(
+        Plane &plane
+    ) {
+        int ssz = plane.width_ * plane.height_;
+        for (int i = 0; i < ssz; ++i) {
+            int s = plane.samples_[i];
+            s = (s - 32768) * 2;
+            plane.samples_[i] = s;
+        }
+    }
+
+    void divide(
+        Planes &numer,
+        Planes &denom,
+        Planes &result
+    ) {
+        divide(numer.r_, denom.r_, result.r_);
+        divide(numer.g1_, denom.g1_, result.g1_);
+        divide(numer.g2_, denom.g2_, result.g2_);
+        divide(numer.b_, denom.b_, result.b_);
+    }
+
+    void divide(
+        Plane &numer,
+        Plane &denom,
+        Plane &result
+    ) {
+        int ssz = numer.width_ * numer.height_;
+        for (int i = 0; i < ssz; ++i) {
+            int64_t n = numer.samples_[i];
+            n *= 65536;
+            int64_t d = denom.samples_[i];
+            int64_t r = 0;
+            if (d != 0) {
+                r = n / d;
+            }
+            result.samples_[i] = r;
+        }
+    }
+
+    void multiply(
+        Planes &planes,
+        Planes &correction,
+        double reduction
+    ) {
+        multiply(planes.r_, correction.r_, reduction);
+        multiply(planes.g1_, correction.g1_, reduction);
+        multiply(planes.g2_, correction.g2_, reduction);
+        multiply(planes.b_, correction.b_, reduction);
+    }
+
+    void multiply(
+        Plane &plane,
+        Plane &correction,
+        double reduction
+    ) {
+        int ssz = plane.width_ * plane.height_;
+        for (int i = 0; i < ssz; ++i) {
+            double s = correction.samples_[i];
+            s /= 65536.0;
+
+            /**
+            the scaling factor should be about 1.0.
+            make it closer to 1.0 by the given reduction factor.
+            **/
+            s = (s - 1.0) * reduction + 1.0;
+
+            s *= (double) plane.samples_[i];
+            plane.samples_[i] = s;
         }
     }
 
