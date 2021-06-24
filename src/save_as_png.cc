@@ -120,7 +120,60 @@ namespace {
 
 const int kFullySaturated = (1<<30)-1;
 
-void convolve_thread(
+void convolve_plane_thread(
+    Plane *src,
+    Plane *kernel,
+    Plane *dst,
+    int ystart,
+    int dy
+) {
+    int swd = src->width_;
+    int sht = src->height_;
+    int kwd = kernel->width_;
+    int kht = kernel->height_;
+
+    for (int y1 = ystart; y1 < sht; y1 += dy) {
+        if (y1 % 100 == 0) {
+            LOG("y1="<<y1);
+        }
+        for (int x1 = 0; x1 < swd; ++x1) {
+            double s = 0;
+            double sumk = 0;
+            for (int yk = 0; yk < kht; ++yk) {
+                int y0 = y1 + yk - kht / 2;
+                if (y0 < 0) {
+                    continue;
+                }
+                if (y0 >= sht) {
+                    break;
+                }
+                for (int xk = 0; xk < kwd; ++xk) {
+                    int x0 = x1 + xk - kwd / 2;
+                    if (x0 < 0) {
+                        continue;
+                    }
+                    if (x0 >= swd) {
+                        break;
+                    }
+                    double k = kernel->get(xk, yk);
+                    if (k != 0) {
+                        s += k * src->get(x0, y0);
+                        sumk += k;
+                    }
+                }
+            }
+            if (sumk > 0) {
+                s /= sumk;
+            } else {
+                s = 32768;
+            }
+            dst->set(x1, y1, s);
+        }
+    }
+}
+
+#if 0
+void convolve_planes_thread(
     Planes *src,
     Plane *kernel,
     Planes *dst,
@@ -181,20 +234,21 @@ void convolve_thread(
         }
     }
 }
+#endif
 
 void convolve_mt(
-    Planes &src,
+    Plane &src,
     Plane &kernel,
-    Planes &dst
+    Plane &dst
 ) {
-    std::thread th0(convolve_thread, &src, &kernel, &dst, 0, 8);
-    std::thread th1(convolve_thread, &src, &kernel, &dst, 1, 8);
-    std::thread th2(convolve_thread, &src, &kernel, &dst, 2, 8);
-    std::thread th3(convolve_thread, &src, &kernel, &dst, 3, 8);
-    std::thread th4(convolve_thread, &src, &kernel, &dst, 4, 8);
-    std::thread th5(convolve_thread, &src, &kernel, &dst, 5, 8);
-    std::thread th6(convolve_thread, &src, &kernel, &dst, 6, 8);
-    std::thread th7(convolve_thread, &src, &kernel, &dst, 7, 8);
+    std::thread th0(convolve_plane_thread, &src, &kernel, &dst, 0, 8);
+    std::thread th1(convolve_plane_thread, &src, &kernel, &dst, 1, 8);
+    std::thread th2(convolve_plane_thread, &src, &kernel, &dst, 2, 8);
+    std::thread th3(convolve_plane_thread, &src, &kernel, &dst, 3, 8);
+    std::thread th4(convolve_plane_thread, &src, &kernel, &dst, 4, 8);
+    std::thread th5(convolve_plane_thread, &src, &kernel, &dst, 5, 8);
+    std::thread th6(convolve_plane_thread, &src, &kernel, &dst, 6, 8);
+    std::thread th7(convolve_plane_thread, &src, &kernel, &dst, 7, 8);
     th0.join();
     th1.join();
     th2.join();
@@ -204,6 +258,31 @@ void convolve_mt(
     th6.join();
     th7.join();
 }
+
+#if 0
+void convolve_mt(
+    Planes &src,
+    Plane &kernel,
+    Planes &dst
+) {
+    std::thread th0(convolve_planes_thread, &src, &kernel, &dst, 0, 8);
+    std::thread th1(convolve_planes_thread, &src, &kernel, &dst, 1, 8);
+    std::thread th2(convolve_planes_thread, &src, &kernel, &dst, 2, 8);
+    std::thread th3(convolve_planes_thread, &src, &kernel, &dst, 3, 8);
+    std::thread th4(convolve_planes_thread, &src, &kernel, &dst, 4, 8);
+    std::thread th5(convolve_planes_thread, &src, &kernel, &dst, 5, 8);
+    std::thread th6(convolve_planes_thread, &src, &kernel, &dst, 6, 8);
+    std::thread th7(convolve_planes_thread, &src, &kernel, &dst, 7, 8);
+    th0.join();
+    th1.join();
+    th2.join();
+    th3.join();
+    th4.join();
+    th5.join();
+    th6.join();
+    th7.join();
+}
+#endif
 
 class SaveAsPng {
 public:
@@ -523,6 +602,13 @@ public:
         LOG("deblurring patch: "<<l<<","<<t<<","<<r<<","<<b);
 
         /**
+        we are going to be working in grayscale.
+        so let's just start there.
+        **/
+        Plane cropped;
+        compute_luminance(image_.planes_, cropped);
+
+        /**
         we found the patch coordinages by inspection.
         t,l,b,r are in final coordinates.
         ie after interpolation. hence the /2.
@@ -543,19 +629,13 @@ public:
         r = l + kwd;
         b = t + kht;
 
-        /** copy the image and crop it. **/
-        Planes patch = image_.planes_;
-        patch.crop(l, t, r, b);
-
         /**
         estimate the point spread function (the blur kernel)
         from the luninance of the patch.
         threshold it so most of the values are zero.
         **/
-        Plane kernel;
-        kernel.init(kwd, kht);
-        compute_luminance(patch, kernel);
-        patch.init(0, 0);
+        Plane kernel = cropped;
+        kernel.crop(l, t, r, b);
 
         /** this is approximately the number of kernel pixels we want lit up. **/
         int litup = 1 * (kwd + kht);
@@ -583,7 +663,6 @@ public:
         hack: overwrite the image to ensure we have the right patch.
         for venus and crescent moon with people on bridge: 4520,1470,4642,1554
         **/
-        //image_.planes_ = patch;
         /*image_.planes_.r_ = kernel;
         image_.planes_.g1_ = kernel;
         image_.planes_.g2_ = kernel;
@@ -594,13 +673,8 @@ public:
         apparently this method generates a kernel that's flipped x and y.
         ie rotated 180 degrees.
         so we need to correct that.
-        but...
-        we also need the flipped version of the kernel.
-        so save the flipped version.
-        then unflip the kernel.
         **/
-        Plane lenrek = kernel;
-        rotate_180(lenrek);
+        rotate_180(kernel);
 
         /**
         hack: the image is really freaking big compared to the patch.
@@ -608,8 +682,7 @@ public:
         **/
         LOG("deblur hack! cropping image");
         const int margin = 2 * std::max(kwd, kht);
-        Planes cropped_image = image_.planes_;
-        cropped_image.crop(l - margin, t - margin, r + margin, b + margin);
+        cropped.crop(l - margin, t - margin, r + margin, b + margin);
 
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
@@ -630,12 +703,12 @@ public:
         **/
 
         /** allocate temporary storage. **/
-        Planes estimate;
-        Planes blurred;
-        Planes error;
-        Planes correction;
-        int swd = cropped_image.r_.width_;
-        int sht = cropped_image.r_.height_;
+        Plane estimate;
+        Plane blurred;
+        Plane error;
+        Plane correction;
+        int swd = cropped.width_;
+        int sht = cropped.height_;
         estimate.init(swd, sht);
         blurred.init(swd, sht);
         error.init(swd, sht);
@@ -644,10 +717,7 @@ public:
         /** start with 50% gray. **/
         int ssz = swd * sht;
         for (int i = 0; i < ssz; ++i) {
-            estimate.r_.samples_[i] = 32768;
-            estimate.g1_.samples_[i] = 32768;
-            estimate.g2_.samples_[i] = 32768;
-            estimate.b_.samples_[i] = 32768;
+            estimate.samples_[i] = 32768;
         }
 
         /**
@@ -655,10 +725,10 @@ public:
         this avoids the 0/0 problem above.
         **/
         LOG("deblur hack! changing image range to gray to white.");
-        black_to_gray(cropped_image);
+        black_to_gray(cropped);
 
-        int niterations = 3;
-        for (int n = 1; n <= niterations; ++n) {
+        int niterations = 1;
+        for (int n = 1; ; ++n) {
             LOG("iteration: "<<n<<" of "<<niterations);
 
             /** convolve the first estimate with blur kernel **/
@@ -669,20 +739,89 @@ public:
             }
 
             /** divide the observed image by the blurred estimate. **/
-            divide(cropped_image, blurred, error);
+            divide(cropped, blurred, error);
 
             /** convolve the scaling factor with the flipped blur kernel **/
-            convolve_mt(error, lenrek, correction);
+            rotate_180(kernel);
+            convolve_mt(error, kernel, correction);
+            rotate_180(kernel);
 
             /** multiply the estimate by the correction to get the new estimate. **/
-            multiply(estimate, correction, 0.9);
+            multiply(estimate, correction, 1.0);
+
+            /** stop **/
+            if (n == niterations) {
+                break;
+            }
+
+            /**
+            now we need to refine the kernel.
+            it's exactly the same procedure.
+            except the roles of the kernel and the estimated image are reversed.
+            and we want to work in luminance space instead of rggb space.
+            make use of the fact that convolution is commutative.
+            **/
+            /** these are the size of the source. **/
+            convolve_mt(estimate, kernel, blurred);
+
+            /** hack! save the blurred. **/
+            /*image_.planes_.r_ = blurred;
+            image_.planes_.g1_ = blurred;
+            image_.planes_.g2_ = blurred;
+            image_.planes_.b_ = blurred;
+            return;*/
+
+            divide(cropped, blurred, error);
+
+            /** hack! save the error. **/
+            for (int i = 0; i < ssz; ++i) {
+                int s = error.samples_[i];
+                s /= 2;
+                error.samples_[i] = s;
+            }
+            image_.planes_.r_ = error;
+            image_.planes_.g1_ = error;
+            image_.planes_.g2_ = error;
+            image_.planes_.b_ = error;
+            return;
+
+            rotate_180(estimate);
+            convolve_mt(error, estimate, correction);
+
+            /** hack! save the correction. **/
+            image_.planes_.r_ = correction;
+            image_.planes_.g1_ = correction;
+            image_.planes_.g2_ = correction;
+            image_.planes_.b_ = correction;
+            return;
+
+            rotate_180(estimate);
+            /**
+            size mismatch here.
+            mathematically we can expand the kernel by padding with zeros
+            on the top, left, bottom, and right.
+            which means we could crop the middle of the correction.
+            but need to verify.
+            **/
+            correction.crop(margin, margin, swd - margin, sht - margin);
+            multiply(kernel, correction, 1.0);
         }
+
+        /** hack! save the updated kernel. **/
+        /*image_.planes_.r_ = kernel;
+        image_.planes_.g1_ = kernel;
+        image_.planes_.g2_ = kernel;
+        image_.planes_.b_ = kernel;
+        return;*/
 
         LOG("deblur hack! changing image range to black to white.");
         gray_to_black(estimate);
 
         /** save it. **/
-        image_.planes_ = std::move(estimate);
+        image_.planes_.r_ = estimate;
+        image_.planes_.g1_ = estimate;
+        image_.planes_.g2_ = estimate;
+        image_.planes_.b_ = estimate;
     }
 
     void rotate_180(
@@ -712,15 +851,6 @@ public:
                 --xr;
             }
         }
-    }
-
-    void black_to_gray(
-        Planes &planes
-    ) {
-        black_to_gray(planes.r_);
-        black_to_gray(planes.g1_);
-        black_to_gray(planes.g2_);
-        black_to_gray(planes.b_);
     }
 
     void black_to_gray(
