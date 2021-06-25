@@ -61,7 +61,13 @@ public:
 
     Buffer source;
     Buffer kernel;
-    Buffer blurred;
+    Buffer observed;
+    Buffer estimate;
+    Buffer denom;
+    Buffer error;
+    Buffer temp;
+    Buffer lenrek;
+    Buffer scale;
 
     void run(
         int argc,
@@ -71,17 +77,88 @@ public:
         (void) argv;
         LOG("experiment of the day.");
 
+        /** load the source image. **/
         load_png(kSourceFile, source);
+        save_png("x-real-source.png", source);
+
+        /** load the actual blur kernel. **/
         load_png(kBlurFile, kernel);
+        save_png("x-real-kernel.png", kernel);
 
-        int wd = source.width_;
-        int ht = source.height_;
-        blurred.init(wd, ht);
-        convolve(source, kernel, blurred);
+        /** blur the source with the kernel. **/
+        int swd = source.width_;
+        int sht = source.height_;
+        int ssz = swd * sht;
+        observed.init(swd, sht);
+        convolve(source, kernel, observed);
+        save_png("x-observed.png", observed);
 
-        save_png("experiment-blurred.png", blurred);
-        save_png("experiment-kernel.png", kernel);
-        save_png("experiment-source.png", source);
+        /** "estimate" the blur kernel. **/
+        int kwd = kernel.width_;
+        int kht = kernel.height_;
+        int ksz = kwd * kht;
+        for (int i = 0; i < ksz; ++i) {
+            double s = kernel.samples_[i];
+            if (s < 0.2) {
+                s = 0.0;
+            } else {
+                s = 0.88;
+            }
+            kernel.samples_[i] = s;
+        }
+        save_png("x-est-kernel.png", kernel);
+
+        /**
+        the algorithm doesn't like black.
+        ensure the source has no black.
+        **/
+        for (int i = 0; i < ssz; ++i) {
+            double s = observed.samples_[i];
+            s *= 0.9;
+            s += 0.1;
+            observed.samples_[i] = s;
+        }
+        save_png("x-deblacked.png", observed);
+
+        /** start with the source image. **/
+        estimate = observed;
+
+        /** initialize temporary space. **/
+        denom.init(swd, sht);
+        error.init(swd, sht);
+        temp.init(swd, sht);
+        lenrek.init(kwd, kht);
+        scale.init(swd, sht);
+
+        /** convolve the estimated image with the estimated blur kernel. **/
+        convolve(estimate, kernel, denom);
+        save_png("x-denom.png", denom);
+
+        /** divide the observed image by the denom. **/
+        divide(observed, denom, error);
+        for (int i = 0; i < ssz; ++i) {
+            double s = error.samples_[i];
+            s /= 2.0;
+            temp.samples_[i] = s;
+        }
+        save_png("x-error.png", temp);
+
+        /** flip the kernel. **/
+        rotate_180(kernel, lenrek);
+        save_png("x-flipped-est-kernel.png", lenrek);
+
+        /** convolve the error with the flipped kernel. **/
+        convolve(error, lenrek, scale);
+        for (int i = 0; i < ssz; ++i) {
+            double s = scale.samples_[i];
+            s /= 2.0;
+            temp.samples_[i] = s;
+        }
+        save_png("x-scale.png", temp);
+
+        /** multiply the estimate by the scale factor in place. **/
+        multiply(estimate, scale);
+        save_png("x-estimate-1.png", estimate);
     }
 
     void load_png(
@@ -156,7 +233,7 @@ public:
                 double sums = 0.0;
                 double sumk = 0.0;
                 for (int ky = 0; ky < kht; ++ky) {
-                    int sy = dy - ky + kht/2;
+                    int sy = dy + ky - kht/2;
                     if (sy < 0) {
                         continue;
                     }
@@ -164,7 +241,7 @@ public:
                         break;
                     }
                     for (int kx = 0; kx < kwd; ++kx) {
-                        int sx = dx - kx + kwd/2;
+                        int sx = dx + kx - kwd/2;
                         if (sx < 0) {
                             continue;
                         }
@@ -183,6 +260,56 @@ public:
                 }
                 dest.set(dx, dy, ds);
             }
+        }
+    }
+
+    void divide(
+        Buffer &numer,
+        Buffer &denom,
+        Buffer &result
+    ) {
+        int sz = numer.width_ * numer.height_;
+        for (int i = 0; i < sz; ++i) {
+            double n = numer.samples_[i];
+            double d = denom.samples_[i];
+            double r = 1.0;
+            if (d != 0.0) {
+                r = n / d;
+            }
+            r = std::max(r, 0.0);
+            r = std::min(r, 2.0);
+            result.samples_[i] = r;
+        }
+    }
+
+    void rotate_180(
+        Buffer &src,
+        Buffer &dst
+    ) {
+        int wd = src.width_;
+        int ht = src.height_;
+        for (int dy = 0; dy < ht; ++dy) {
+            int sy = ht - 1 - dy;
+            for (int dx = 0; dx < wd; ++dx) {
+                int sx = wd - 1 - dx;
+                double s = src.get(sx, sy);
+                dst.set(dx, dy, s);
+            }
+        }
+    }
+
+    void multiply(
+        Buffer &buffer,
+        Buffer &scale
+    ) {
+        int sz = buffer.width_ * buffer.height_;
+        for (int i = 0; i < sz; ++i) {
+            double a = buffer.samples_[i];
+            double s = scale.samples_[i];
+            double b = a * s;
+            b = std::max(b, 0.1);
+            b = std::min(b, 1.0);
+            buffer.samples_[i] = b;
         }
     }
 };
