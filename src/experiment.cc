@@ -68,6 +68,7 @@ public:
     Buffer temp;
     Buffer lenrek;
     Buffer scale;
+    Buffer etamitse;
 
     void run(
         int argc,
@@ -129,6 +130,9 @@ public:
         temp.init(swd, sht);
         lenrek.init(kwd, kht);
         scale.init(swd, sht);
+        etamitse.init(swd, sht);
+
+        /** update the image estimate. **/
 
         /** convolve the estimated image with the estimated blur kernel. **/
         convolve(estimate, kernel, denom);
@@ -159,6 +163,50 @@ public:
         /** multiply the estimate by the scale factor in place. **/
         multiply(estimate, scale);
         save_png("x-estimate-1.png", estimate);
+
+        /** update the kernel estimate. **/
+
+        /** convolve the estimated image with the estimated blur kernel. **/
+        convolve(estimate, kernel, denom);
+        save_png("x-denom-1.png", denom);
+
+        /** divide the observed image by the denom. **/
+        divide(observed, denom, error);
+        for (int i = 0; i < ssz; ++i) {
+            double s = error.samples_[i];
+            s /= 2.0;
+            temp.samples_[i] = s;
+        }
+        save_png("x-error-1.png", temp);
+
+        /** flip the estimate. **/
+        rotate_180(estimate, etamitse);
+        save_png("x-flipped-estimate.png", etamitse);
+
+        /** convolve the error with the flipped kernel. **/
+        convolve(error, etamitse, scale);
+        for (int i = 0; i < ssz; ++i) {
+            double s = scale.samples_[i];
+            s /= 2.0;
+            temp.samples_[i] = s;
+        }
+        save_png("x-scale-1.png", temp);
+
+        /**
+        multiply the kernel by the scale factor in place.
+        we have multiple problems:
+        - the kernel and the scale factor are not the same size.
+        crop the center out of the scale factor?
+        - the kernel has zeroes.
+        scaling zero gives zero.
+        somehow we need to make kernel values not-zero.
+        - convolving the error factors with the entire estimated image
+        gives a nearly uniform result.
+        everything is with 1.00 +/- 0.004. give or take.
+        so we never modify the kernel.
+        **/
+        //multiply(estimate, scale);
+        //save_png("x-estimate-1.png", estimate);
     }
 
     void load_png(
