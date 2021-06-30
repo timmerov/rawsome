@@ -131,12 +131,17 @@ public:
 
     Buffer estimate0;
     Buffer estimate1;
+    Buffer estimate2;
     Buffer kernel0;
     Buffer kernel1;
     Buffer observed1;
     Buffer estimate1_real;
     Buffer kernel1_real;
     Buffer blurred1;
+    Buffer lenrek1;
+    Buffer error1;
+    Buffer scaling1;
+    Buffer temp1;
 
     void run(
         int argc,
@@ -187,12 +192,24 @@ public:
         compare to the observed.
         save them.
         */
-        int wd = estimate1.width_;
-        int ht = estimate1.height_;
-        blurred1.init(wd, ht);
         convolve(estimate1, kernel1, blurred1);
         save_png("sunset/x-blurred1.png", blurred1);
         save_diff("sunset/x-blurred1-diff.png", blurred1, observed1);
+
+        /**
+        lucy-richardson algorithm.
+        **/
+        divide(observed1, blurred1, error1);
+        scale(error1, temp1, 0.5);
+        save_png("sunset/x-error1.png", temp1);
+        rotate_180(kernel1, lenrek1);
+        save_png("sunset/x-lenrek1.png", lenrek1);
+        convolve(error1, lenrek1, scaling1);
+        scale(scaling1, temp1, 0.5);
+        save_png("sunset/x-scaling1.png", temp1);
+        multiply(estimate1, scaling1, estimate2);
+        save_png("sunset/x-estimate2.png", estimate2);
+        save_diff("sunset/x-estimate2-diff.png", estimate2, observed1);
     }
 
     void replicate_x(
@@ -321,6 +338,7 @@ public:
         /** assume source and result are the same size. **/
         int swd = source.width_;
         int sht = source.height_;
+        dest.init(swd, sht);
         /** assume kernel is not. **/
         int kwd = kernel.width_;
         int kht = kernel.height_;
@@ -364,12 +382,15 @@ public:
         Buffer &denom,
         Buffer &result
     ) {
-        int sz = numer.width_ * numer.height_;
+        int wd = numer.width_;
+        int ht = numer.height_;
+        result.init(wd, ht);
+        int sz = wd * ht;
         for (int i = 0; i < sz; ++i) {
             double n = numer.samples_[i];
             double d = denom.samples_[i];
             double r = 1.0;
-            if (d != 0.0) {
+            if (std::abs(d) > 1e-9) {
                 r = n / d;
             }
             r = std::max(r, 0.0);
@@ -384,6 +405,7 @@ public:
     ) {
         int wd = src.width_;
         int ht = src.height_;
+        dst.init(wd, ht);
         for (int dy = 0; dy < ht; ++dy) {
             int sy = ht - 1 - dy;
             for (int dx = 0; dx < wd; ++dx) {
@@ -395,17 +417,39 @@ public:
     }
 
     void multiply(
-        Buffer &buffer,
-        Buffer &scale
+        Buffer &abuf,
+        Buffer &bbuf,
+        Buffer &result
     ) {
-        int sz = buffer.width_ * buffer.height_;
+        int wd = abuf.width_;
+        int ht = abuf.height_;
+        result.init(wd, ht);
+        int sz = wd * ht;
         for (int i = 0; i < sz; ++i) {
-            double a = buffer.samples_[i];
-            double s = scale.samples_[i];
-            double b = a * s;
-            b = std::max(b, 0.1);
-            b = std::min(b, 1.0);
-            buffer.samples_[i] = b;
+            double a = abuf.samples_[i];
+            double b = bbuf.samples_[i];
+            double r = a * b;
+            r = std::max(r, 0.1);
+            r = std::min(r, 1.0);
+            result.samples_[i] = r;
+        }
+    }
+
+    void scale(
+        Buffer &src,
+        Buffer &dst,
+        double factor
+    ) {
+        int wd = src.width_;
+        int ht = src.height_;
+        dst.init(wd, ht);
+        int sz = wd * ht;
+        for (int i = 0; i < sz; ++i) {
+            double s = src.samples_[i];
+            s *= factor;
+            s = std::max(s, 0.0);
+            s = std::min(s, 1.0);
+            dst.samples_[i] = s;
         }
     }
 };
