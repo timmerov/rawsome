@@ -680,9 +680,9 @@ public:
         hack: the image is really freaking big compared to the patch.
         crop it.
         **/
-        LOG("deblur hack! cropping image");
+        /*LOG("deblur hack! cropping image");
         const int margin = 2 * std::max(kwd, kht);
-        cropped.crop(l - margin, t - margin, r + margin, b + margin);
+        cropped.crop(l - margin, t - margin, r + margin, b + margin);*/
 
         /**
         okay now we're going to do the Lucy-Richardson deconvolution algorithm.
@@ -754,6 +754,7 @@ public:
                 break;
             }
 
+            #if 0
             /**
             now we need to refine the kernel.
             it's exactly the same procedure.
@@ -805,6 +806,7 @@ public:
             **/
             correction.crop(margin, margin, swd - margin, sht - margin);
             multiply(kernel, correction, 1.0);
+            #endif
         }
 
         /** hack! save the updated kernel. **/
@@ -943,6 +945,35 @@ public:
             s *= (double) plane.samples_[i];
             plane.samples_[i] = s;
         }
+    }
+
+    void decimate(
+        Plane &plane
+    ) {
+        decimate_x(plane);
+        plane.transpose();
+        decimate_x(plane);
+        plane.transpose();
+    }
+
+    void decimate_x(
+        Plane &src
+    ) {
+        int wds = src.width_;
+        int ht = src.height_;
+        int wdd = wds / 2;
+        Plane dst;
+        dst.init(wdd, ht);
+        for (int y = 0; y < ht; ++y) {
+            for (int xd = 0; xd < wdd; ++xd) {
+                int xs = xd * 2;
+                int s0 = src.get(xs, y);
+                int s1 = src.get(xs + 1, y);
+                int d = (s0 + s1 + 1) / 2;
+                dst.set(xd, y, d);
+            }
+        }
+        src = std::move(dst);
     }
 
     void adjust_dynamic_range() {

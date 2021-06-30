@@ -4,6 +4,81 @@ Copyright (C) 2012-2021 tim cotter. All rights reserved.
 
 /**
 run the experiment of the day.
+
+notes for future experiments:
+estimate sharpenss using image gradient.
+some info from here:
+https://feichtenhofer.github.io/pubs/BSc_thesis_feichtenhofer_sharpness_10-2011.pdf
+gradient convolution:
+    +1 0 -1
+    +2 0 -2
+    +1 0 -1
+for horizontal Gx.
+and transposed for vertical Gy.
+G^2 = Gx^2 + Gy^2
+threshold = alpha sqrt(average(G))
+where alpha = 2.
+the logic in the paper here is a bit sketchy.
+irregardless...
+there's a threshold. ;->
+
+so i took a picture of the moon and venus reflected in a pond with silhouettes of
+people on a bridge.
+there was lots of camera shake.
+the problem is how to undo the shake and recover a clean image.
+
+B = I * C + N
+
+B: observed image.
+I: clean image.
+C: blur kernel.
+N: noise.
+*: convolution operation.
+
+the problem is under-determined.
+cause many I's and C's will give the correct B.
+
+the user must estimate the size of the blur kernel.
+
+the literature is full of people trying to recover the clean image and the kernel
+all in one go.
+it's slow.
+understandably.
+and results not guaranteed.
+
+i propose an iterative solution.
+
+shrink the images and the kernel so the kernel is 1x1.
+at this resolution the clean image and the observed image are the same.
+this is the initial estimate of the clean image.
+
+double the width (but not the height) of the estimate and the blur kernel.
+shrink the observed image to the new dimensions.
+*waving hands* figure out the new estimate and the new kernel.
+
+transpose images and kernel.
+repeat until a full size image is acheived.
+
+great we still have the same basic problem.
+but we have a decent place to start at each step.
+ie we have a reasonable estimate image and a reasonable kernel.
+
+for updating the estimated image the question becomes:
+how do we create two pixels from one pixel?
+natural images have a particular distribution of gradients.
+specifically, a heavy tail.
+ie most gradients are really small but some are really big.
+many methods appear to be kinda cheap to me.
+lucy-richardson can be pretty fast assuming the kernel is known.
+
+for updating the estimated kernel... ?
+the literature is really weak here.
+and worse, the options seem to be conputationally expensive.
+there are some restrictions on the kernel that can help.
+the blur kernel is likely to be sparse.
+elements must be non-negative.
+and the non-zeros must be contiguous.
+
 **/
 
 #include "experiment.h"
@@ -14,10 +89,9 @@ run the experiment of the day.
 
 namespace {
 
-const char *kSourceFile = "moon-venus.png";
-const char *kBlurFile = "simple-blur.png";
-//const char *kBlurFile = "dual-blur.png";
-//const char *kBlurFile = "complex-blur.png";
+const char *kSourceFile = "sunset/sunset-gray-1024.png";
+const char *kKernelFile = "sunset/sunset-kernel-32.png";
+const char *kShookFile = "sunset/sunset-shook-1024.png";
 
 class Buffer {
 public:
@@ -62,13 +136,6 @@ public:
     Buffer source;
     Buffer kernel;
     Buffer observed;
-    Buffer estimate;
-    Buffer denom;
-    Buffer error;
-    Buffer temp;
-    Buffer lenrek;
-    Buffer scale;
-    Buffer etamitse;
 
     void run(
         int argc,
@@ -80,133 +147,16 @@ public:
 
         /** load the source image. **/
         load_png(kSourceFile, source);
-        save_png("x-real-source.png", source);
 
         /** load the actual blur kernel. **/
-        load_png(kBlurFile, kernel);
-        save_png("x-real-kernel.png", kernel);
+        load_png(kKernelFile, kernel);
 
         /** blur the source with the kernel. **/
         int swd = source.width_;
         int sht = source.height_;
-        int ssz = swd * sht;
         observed.init(swd, sht);
         convolve(source, kernel, observed);
-        save_png("x-observed.png", observed);
-
-        /** "estimate" the blur kernel. **/
-        int kwd = kernel.width_;
-        int kht = kernel.height_;
-        int ksz = kwd * kht;
-        for (int i = 0; i < ksz; ++i) {
-            double s = kernel.samples_[i];
-            if (s < 0.2) {
-                s = 0.0;
-            } else {
-                s = 0.88;
-            }
-            kernel.samples_[i] = s;
-        }
-        save_png("x-est-kernel.png", kernel);
-
-        /**
-        the algorithm doesn't like black.
-        ensure the source has no black.
-        **/
-        for (int i = 0; i < ssz; ++i) {
-            double s = observed.samples_[i];
-            s *= 0.9;
-            s += 0.1;
-            observed.samples_[i] = s;
-        }
-        save_png("x-deblacked.png", observed);
-
-        /** start with the source image. **/
-        estimate = observed;
-
-        /** initialize temporary space. **/
-        denom.init(swd, sht);
-        error.init(swd, sht);
-        temp.init(swd, sht);
-        lenrek.init(kwd, kht);
-        scale.init(swd, sht);
-        etamitse.init(swd, sht);
-
-        /** update the image estimate. **/
-
-        /** convolve the estimated image with the estimated blur kernel. **/
-        convolve(estimate, kernel, denom);
-        save_png("x-denom.png", denom);
-
-        /** divide the observed image by the denom. **/
-        divide(observed, denom, error);
-        for (int i = 0; i < ssz; ++i) {
-            double s = error.samples_[i];
-            s /= 2.0;
-            temp.samples_[i] = s;
-        }
-        save_png("x-error.png", temp);
-
-        /** flip the kernel. **/
-        rotate_180(kernel, lenrek);
-        save_png("x-flipped-est-kernel.png", lenrek);
-
-        /** convolve the error with the flipped kernel. **/
-        convolve(error, lenrek, scale);
-        for (int i = 0; i < ssz; ++i) {
-            double s = scale.samples_[i];
-            s /= 2.0;
-            temp.samples_[i] = s;
-        }
-        save_png("x-scale.png", temp);
-
-        /** multiply the estimate by the scale factor in place. **/
-        multiply(estimate, scale);
-        save_png("x-estimate-1.png", estimate);
-
-        /** update the kernel estimate. **/
-
-        /** convolve the estimated image with the estimated blur kernel. **/
-        convolve(estimate, kernel, denom);
-        save_png("x-denom-1.png", denom);
-
-        /** divide the observed image by the denom. **/
-        divide(observed, denom, error);
-        for (int i = 0; i < ssz; ++i) {
-            double s = error.samples_[i];
-            s /= 2.0;
-            temp.samples_[i] = s;
-        }
-        save_png("x-error-1.png", temp);
-
-        /** flip the estimate. **/
-        rotate_180(estimate, etamitse);
-        save_png("x-flipped-estimate.png", etamitse);
-
-        /** convolve the error with the flipped kernel. **/
-        convolve(error, etamitse, scale);
-        for (int i = 0; i < ssz; ++i) {
-            double s = scale.samples_[i];
-            s /= 2.0;
-            temp.samples_[i] = s;
-        }
-        save_png("x-scale-1.png", temp);
-
-        /**
-        multiply the kernel by the scale factor in place.
-        we have multiple problems:
-        - the kernel and the scale factor are not the same size.
-        crop the center out of the scale factor?
-        - the kernel has zeroes.
-        scaling zero gives zero.
-        somehow we need to make kernel values not-zero.
-        - convolving the error factors with the entire estimated image
-        gives a nearly uniform result.
-        everything is with 1.00 +/- 0.004. give or take.
-        so we never modify the kernel.
-        **/
-        //multiply(estimate, scale);
-        //save_png("x-estimate-1.png", estimate);
+        save_png(kShookFile, observed);
     }
 
     void load_png(
