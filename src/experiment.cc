@@ -89,10 +89,6 @@ and the non-zeros must be contiguous.
 
 namespace {
 
-const char *kSourceFile = "sunset/sunset-gray-1024.png";
-const char *kKernelFile = "sunset/sunset-kernel-32.png";
-const char *kShookFile = "sunset/sunset-shook-1024.png";
-
 class Buffer {
 public:
     int width_ = 0;
@@ -133,9 +129,14 @@ public:
     Experiment() = default;
     ~Experiment() = default;
 
-    Buffer source;
-    Buffer kernel;
-    Buffer observed;
+    Buffer estimate0;
+    Buffer estimate1;
+    Buffer kernel0;
+    Buffer kernel1;
+    Buffer observed1;
+    Buffer estimate1_real;
+    Buffer kernel1_real;
+    Buffer blurred1;
 
     void run(
         int argc,
@@ -145,10 +146,105 @@ public:
         (void) argv;
         LOG("experiment of the day.");
 
-        /** load the source image. **/
-        load_png(kSourceFile, source);
+        /**
+        these files were downsampled from fullsize by gimp.
+        **/
+        const char *kEstimate128x128 = "sunset/sunset-gray-128x128.png";
+        const char *kEstimate256x128 = "sunset/sunset-gray-256x128.png";
+        const char *kKernel4x4       = "sunset/sunset-kernel-4x4.png";
+        const char *kKernel8x4       = "sunset/sunset-kernel-8x4.png";
+        const char *kShook256x128    = "sunset/sunset-shook-256x128.png";
 
-        /** load the actual blur kernel. **/
+        /**
+        load the half-sized estimate image,
+        half-sized kernel,
+        and full-sized observed image.
+        **/
+        load_png(kEstimate128x128, estimate0);
+        load_png(kKernel4x4, kernel0);
+        load_png(kShook256x128, observed1);
+
+        /**
+        double the width of the estimate and kernel by replicating pixels.
+        save them.
+        **/
+        replicate_x(estimate0, estimate1);
+        replicate_x(kernel0, kernel1);
+        save_png("sunset/x-estimate1.png", estimate1);
+        save_png("sunset/x-kernel1.png", kernel1);
+
+        /**
+        load the full-sized clean image and full-sized kernel
+        for comparison with the expanded estimate and kernel.
+        **/
+        load_png(kEstimate256x128, estimate1_real);
+        load_png(kKernel8x4, kernel1_real);
+        save_diff("sunset/x-estimate1-diff.png", estimate1, estimate1_real);
+        save_diff("sunset/x-kernel-diff.png", kernel1, kernel1_real);
+
+        /**
+        blur the estimate.
+        compare to the observed.
+        save them.
+        */
+        int wd = estimate1.width_;
+        int ht = estimate1.height_;
+        blurred1.init(wd, ht);
+        convolve(estimate1, kernel1, blurred1);
+        save_png("sunset/x-blurred1.png", blurred1);
+        save_diff("sunset/x-blurred1-diff.png", blurred1, observed1);
+    }
+
+    void replicate_x(
+        Buffer &src,
+        Buffer &dst
+    ) {
+        int wd = src.width_;
+        int ht = src.height_;
+        dst.init(2 * wd, ht);
+
+        int sz = wd * ht;
+        for (int i = 0; i < sz; ++i) {
+            double s = src.samples_[i];
+            int k = 2 * i;
+            dst.samples_[k+0] = s;
+            dst.samples_[k+1] = s;
+        }
+    }
+
+    void save_diff(
+        const char *filename,
+        Buffer &abuf,
+        Buffer &bbuf
+    ) {
+        int wd = abuf.width_;
+        int ht = bbuf.height_;
+        Buffer diff;
+        diff.init(wd, ht);
+        int sz = wd * ht;
+        for (int i = 0; i < sz; ++i) {
+            double a = abuf.samples_[i];
+            double b = bbuf.samples_[i];
+            double d = a - b;
+            d = d / 2.0 + 0.5;
+            d = std::max(d, 0.0);
+            d = std::min(d, 1.0);
+            diff.samples_[i] = d;
+        }
+        save_png(filename, diff);
+    }
+
+    void generate_fullsize_shook_image() {
+        const char *kSourceFile = "sunset/sunset-gray-1024.png";
+        const char *kKernelFile = "sunset/sunset-kernel-32.png";
+        const char *kShookFile = "sunset/sunset-shook-1024.png";
+
+        Buffer source;
+        Buffer kernel;
+        Buffer observed;
+
+        /** load the fullsize source and kernel. **/
+        load_png(kSourceFile, source);
         load_png(kKernelFile, kernel);
 
         /** blur the source with the kernel. **/
@@ -156,6 +252,8 @@ public:
         int sht = source.height_;
         observed.init(swd, sht);
         convolve(source, kernel, observed);
+
+        /** save it. **/
         save_png(kShookFile, observed);
     }
 
