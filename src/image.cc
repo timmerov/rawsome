@@ -134,6 +134,9 @@ void Image::load_raw(
     LOG("loading raw image from: \""<<filename<<"\"...");
     is_loaded_ = false;
 
+    /**
+    use LibRaw to load the raw image.
+    **/
     LibRaw raw_image;
     raw_image.open_file(filename);
     int raw_wd = raw_image.imgdata.sizes.width;
@@ -147,7 +150,11 @@ void Image::load_raw(
     raw_image.unpack();
     raw_image.raw2image();
     //dump(raw_image);
+    copy_raw_to_planes(raw_image, planes_);
 
+    /**
+    extract useful information from libraw.
+    **/
     double gamma0 = raw_image.imgdata.params.gamm[0];
     double gamma1 = raw_image.imgdata.params.gamm[1];
     gamma0 = 1.0 / gamma0;
@@ -171,13 +178,28 @@ void Image::load_raw(
     camera_.timestamp_ = raw_image.imgdata.other.timestamp;
     camera_.temperature_ = raw_image.imgdata.other.CameraTemperature;
 
-    copy_raw_to_planes(raw_image, planes_);
+    /** done with libraw **/
+    raw_image.recycle();
 
+    /**
+    the camera has quite a few black pixels.
+    why? dunno.
+    use them to determine the black level.
+    subtract this from all pixels.
+    while we're here, also determine noise.
+    and remove the black pixels from the image.
+    **/
     RggbPixel black;
     determine_black(planes_, black, noise_);
+    crop_black(planes_);
     planes_.subtract(black);
 
-    raw_image.recycle();
+    /**
+    remove bad pixels from the image.
+    camera specific.
+    **/
+    fix_bad_pixels(planes_);
+
     is_loaded_ = true;
 }
 

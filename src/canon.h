@@ -15,4 +15,6 @@ void determine_black(Planes &planes, RggbPixel &black, int &noise);
 
 void crop_black(Planes &planes);
 
+void fix_bad_pixels(Planes &planes);
+
 void compute_luminance(Planes &planes, Plane &luminance);
