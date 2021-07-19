@@ -521,23 +521,67 @@ public:
         every plane has 1 too many rows and 1 too many columns.
         but every plane needs to chop a different set.
         right now every plane looks like this:
-        r i r i r i
-        i i i i i i
-        r i r i r i
-        i i i i i i
+        r i r i r i r
+        i i i i i i i
+        r i r i r i r
+        i i i i i i i
+        r i r i r i r
         where r is a "real" pixel and i is an interpolated pixels.
         we need to make them like up with the bayer pattern.
-        r g r g r g
-        g b g b g b
-        r g r g r g
-        g b g b g b
+        g2 b g2 b g2 b g2 b
+        r g1 r g1 r g1 r g1
+        g2 b g2 b g2 b g2 b
+        r g1 r g1 r g1 r g1
+
+        yes the actual bayer pattern is g2b/rg1.
+        see notes in copy_raw_to_planes() in image.cc.
+
+        real r pixels expect to be in column+0 and row+1.
+        x x x x x x x
+        r i r i r i r
+        i i i i i i i
+        r i r i r i r
+        i i i i i i i
+        r i r i r i r
+
+        real g1 pixels expect to be in column+1 and row+1.
+        x x x x x x x x
+        x g i g i g i g
+        x i i i i i i i
+        x g i g i g i g
+        x i i i i i i i
+        x g i g i g i g
+
+        real g2 pixels expect to be in column+0 and row+0.
+        G i G i G i G
+        i i i i i i i
+        G i G i G i G
+        i i i i i i i
+        G i G i G i G
+
+        real b pixels expect to be in column+1 and row+0.
+        x b i b i b i b
+        x i i i i i i i
+        x b i b i b i b
+        x i i i i i i i
+        x b i b i b i b
+
+        we can't use row 0 or column 0 as shown above.
+        cause we don't have data for some of the components.
+        therefore we must crop row 0 and column 0.
+        where each component may have already cropped one or both.
+
+        r must crop only column 0.
+        g1 must crop neither.
+        g2 must crop both row 0 and column 0.
+        b must crop only row 0.
         **/
         int wd = image_.planes_.r_.width_ - 1;
         int ht = image_.planes_.r_.height_ - 1;
-        image_.planes_.r_.crop(1, 1, wd+1, ht+1);
-        image_.planes_.g1_.crop(0, 1, wd, ht+1);
-        image_.planes_.g2_.crop(1, 0, wd+1, ht);
-        image_.planes_.b_.crop(0, 0, wd, ht);
+        image_.planes_.r_.crop(1, 0, wd+1, ht);
+        image_.planes_.g1_.crop(0, 0, wd, ht);
+        image_.planes_.g2_.crop(1, 1, wd+1, ht+1);
+        image_.planes_.b_.crop(0, 1, wd, ht+1);
 
         LOG("interpolated width ="<<image_.planes_.r_.width_);
         LOG("interpolated height="<<image_.planes_.r_.height_);
