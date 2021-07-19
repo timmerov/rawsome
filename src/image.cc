@@ -108,6 +108,81 @@ std::string trim(
     return s.substr(first, len);
 }
 
+void rotate_90(
+    Plane &src
+) {
+    int wd = src.width_;
+    int ht = src.height_;
+    Plane dst;
+    dst.init(ht, wd);
+    for (int y = 0; y < ht; ++y) {
+        for (int x = 0; x < wd; ++x) {
+            int p = src.get(x, y);
+            dst.set(ht - y - 1, x, p);
+        }
+    }
+    src = std::move(dst);
+}
+
+void rotate_180(
+    Plane &src
+) {
+    int wd = src.width_;
+    int ht = src.height_;
+    Plane dst;
+    dst.init(wd, ht);
+    for (int y = 0; y < ht; ++y) {
+        for (int x = 0; x < wd; ++x) {
+            int p = src.get(x, y);
+            dst.set(wd - x - 1, ht - y - 1, p);
+        }
+    }
+}
+
+void rotate_270(
+    Plane &src
+) {
+    int wd = src.width_;
+    int ht = src.height_;
+    Plane dst;
+    dst.init(ht, wd);
+    for (int y = 0; y < ht; ++y) {
+        for (int x = 0; x < wd; ++x) {
+            int p = src.get(x, y);
+            dst.set(y, wd - x - 1, p);
+        }
+    }
+}
+
+void rotate(
+    Plane &plane,
+    int rotation
+) {
+    switch (rotation) {
+        default:
+            break;
+        case 90:
+            rotate_90(plane);
+            break;
+        case 180:
+            rotate_180(plane);
+            break;
+        case 270:
+            rotate_270(plane);
+            break;
+    }
+}
+
+void rotate(
+    Planes &planes,
+    int rotation
+) {
+    rotate(planes.r_, rotation);
+    rotate(planes.g1_, rotation);
+    rotate(planes.g2_, rotation);
+    rotate(planes.b_, rotation);
+}
+
 } // anonymous namespace
 
 void CameraParams::print() {
@@ -161,6 +236,31 @@ void Image::load_raw(
     double white_balance_g = raw_image.imgdata.color.cam_mul[1];
     double white_balance_b = raw_image.imgdata.color.cam_mul[2];
 
+    /**
+    from libraw documentation:
+    int flip; Image orientation (
+        0 if does not require rotation;
+        3 if requires 180-deg rotation;
+        5 if 90 deg counterclockwise,
+        6 if 90 deg clockwise).
+    **/
+
+    int rotation = 0;
+    switch (raw_image.imgdata.sizes.flip) {
+        default:
+            rotation = 0;
+            break;
+        case 3:
+            rotation = 180;
+            break;
+        case 5:
+            rotation = 270;
+            break;
+        case 6:
+            rotation = 90;
+            break;
+    }
+
     camera_.make_ = raw_image.imgdata.idata.make;
     camera_.model_ = raw_image.imgdata.idata.model;
     camera_.lens_ = raw_image.imgdata.lens.Lens;
@@ -175,6 +275,8 @@ void Image::load_raw(
     camera_.focal_length_ = raw_image.imgdata.other.focal_len;
     camera_.timestamp_ = raw_image.imgdata.other.timestamp;
     camera_.temperature_ = raw_image.imgdata.other.CameraTemperature;
+
+    LOG("flip="<<raw_image.imgdata.sizes.flip);
 
     /** done with libraw **/
     raw_image.recycle();
@@ -197,6 +299,8 @@ void Image::load_raw(
     camera specific.
     **/
     fix_bad_pixels(planes_);
+
+    rotate(planes_, rotation);
 
     is_loaded_ = true;
 }
