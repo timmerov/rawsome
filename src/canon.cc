@@ -116,7 +116,9 @@ void fix_bad_pixels(
     Planes &planes
 ) {
     /** hard coded list of bad pixels. **/
-    fix_bad_pixel(planes.r_, 4011, 2495);
+    (void) planes;
+    (void) fix_bad_pixel;
+    //fix_bad_pixel(planes.r_, 4011, 2495);
 }
 
 void compute_luminance(
