@@ -157,7 +157,6 @@ public:
         show_special_pixel();
         scale_image();
         show_special_pixel();
-        show_special_pixel();
         adjust_dynamic_range();
         show_special_pixel();
         interpolate();
@@ -176,13 +175,39 @@ public:
     }
 
     void show_special_pixel() {
-        /*int x = 2346;
-        int y = 1186;
-        int r = planes_.r_.get(x, y);
-        int g1 = planes_.g1_.get(x, y);
-        int g2 = planes_.g2_.get(x, y);
-        int b = planes_.b_.get(x, y);
-        LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
+        int x = 1924;
+        int y = 906;
+        int r = image_.planes_.r_.get(x, y);
+        int g1 = image_.planes_.g1_.get(x, y);
+        int g2 = image_.planes_.g2_.get(x, y);
+        int b = image_.planes_.b_.get(x, y);
+        LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
+        /*--y;
+        r = image_.planes_.r_.get(x, y);
+        g1 = image_.planes_.g1_.get(x, y);
+        g2 = image_.planes_.g2_.get(x, y);
+        b = image_.planes_.b_.get(x, y);
+        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
+        ++y;
+        --x;
+        r = image_.planes_.r_.get(x, y);
+        g1 = image_.planes_.g1_.get(x, y);
+        g2 = image_.planes_.g2_.get(x, y);
+        b = image_.planes_.b_.get(x, y);
+        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
+        x += 2;
+        r = image_.planes_.r_.get(x, y);
+        g1 = image_.planes_.g1_.get(x, y);
+        g2 = image_.planes_.g2_.get(x, y);
+        b = image_.planes_.b_.get(x, y);
+        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
+        --x;
+        ++y;
+        r = image_.planes_.r_.get(x, y);
+        g1 = image_.planes_.g1_.get(x, y);
+        g2 = image_.planes_.g2_.get(x, y);
+        b = image_.planes_.b_.get(x, y);
+        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
     }
 
     void determine_saturation() {
@@ -222,8 +247,8 @@ public:
         **/
         const int kSatMax = 16383;
         const int kSatExpected = 13583 - 2046; /** we need to subtract black. **/
-        const int kSatDiff = kSatMax - kSatExpected;
-        const int kSatSize = 2*kSatDiff;
+        const int kSatHalf = kSatMax - kSatExpected;
+        const int kSatSize = 2*kSatHalf;
         const int kSatThreshold = kSatMax - kSatSize;
 
         histogram_.clear();
@@ -232,8 +257,11 @@ public:
         for (int i = 0; i < sz; ++i) {
             int c = plane.samples_[i];
             c -= kSatThreshold;
-            if (c >= 0 && c < kSatSize) {
-                ++histogram_[c ];
+            if (c >= kSatSize) {
+                c = kSatSize-1;
+            }
+            if (c >= 0) {
+                ++histogram_[c];
             }
         }
 
@@ -247,6 +275,7 @@ public:
 
         /** for very black pictures, use the expected value. **/
         if (saturation < 12) {
+            LOG("saturation method: default");
             return kSatExpected;
         }
 
@@ -261,10 +290,11 @@ public:
         **/
         int idx = saturation - 12;
         int c0 = histogram_[idx];
-        c0 = std::min(c0, 100);
+        c0 = std::max(c0, 100);
+        int threshold = 3*c0;
         for (++idx; idx <= saturation; ++idx) {
             int c1 = histogram_[idx];
-            if (c1 > 3*c0) {
+            if (c1 > threshold) {
                 /**
                 we found a big jump.
                 idx is the saturation value.
@@ -272,6 +302,7 @@ public:
                 **/
                 saturation = idx - 2;
                 saturation += kSatThreshold;
+                LOG("saturation method: saturated");
                 return saturation;
             }
         }
@@ -280,6 +311,7 @@ public:
         saturation += 2;
         saturation += kSatThreshold;
         saturation = std::max(saturation, kSatExpected);
+        LOG("saturation method: perfect tail");
         return saturation;
     }
 
@@ -361,7 +393,7 @@ public:
         cam_mul.b_ /= saturation_;
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
-        /** adjust to span full 32 bit range. **/
+        /** adjust to span full 16 bit range. **/
         cam_mul.r_ *= 65535.0;
         cam_mul.g1_ *= 65535.0;
         cam_mul.g2_ *= 65535.0;

@@ -44,31 +44,6 @@ int determine_black(
     int black = sum / count;
     return black;
 }
-
-void fix_bad_pixel(
-    Plane &plane,
-    int x,
-    int y
-) {
-    LOG("fixing bad pixel at "<<x<<","<<y);
-
-    /**
-    we found the bad pixel by inspection.
-    x,y are in final coordinates.
-    ie after interpolation. hence the /2.
-    also after cropping border pixels. hence the +2.
-    **/
-    x = x / 2 + 2;
-    y = y / 2 + 2;
-
-    /** overwrite the bad pixel with the average of its neighbors. **/
-    int c0 = plane.get(x, y-1);
-    int c1 = plane.get(x-1, y);
-    int c2 = plane.get(x+1, y);
-    int c3 = plane.get(x, y+1);
-    int c = (c0 + c1 + c2 + c3 + 2) / 4;
-    plane.set(x, y, c);
-}
 } // anonymous namespace
 
 void determine_black(
@@ -110,15 +85,6 @@ void crop_black(
     planes.crop(38, 18, planes.r_.width_, planes.r_.height_);
     LOG("cropped width ="<<planes.r_.width_);
     LOG("cropped height="<<planes.r_.height_);
-}
-
-void fix_bad_pixels(
-    Planes &planes
-) {
-    /** hard coded list of bad pixels. **/
-    (void) planes;
-    (void) fix_bad_pixel;
-    //fix_bad_pixel(planes.r_, 4011, 2495);
 }
 
 void compute_luminance(

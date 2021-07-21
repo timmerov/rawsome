@@ -183,6 +183,125 @@ void rotate(
     rotate(planes.b_, rotation);
 }
 
+void fix_bad_pixels(
+    Planes & planes,
+    int noise
+) {
+    LOG("fixing bad pixels...");
+
+    /**
+    sometimes pixels go bloop.
+    they randomly dump charge into the sensor.
+    no idea why.
+    this often shows up with negative values when we convert to srgb.
+    we focus on fixing those bad pixels.
+    **/
+
+    /** white balance **/
+    double balance_r = 2.27051;
+    double balance_b = 1.54199;
+
+    /** srgb conversion **/
+    double mat[3][3] = {
+        {+1.901824, -0.972035, +0.070211},
+        {-0.229410, +1.659384, -0.429974},
+        {+0.042001, -0.519143, +1.477141}
+    };
+
+    /** combine white balance and srgb **/
+    for (int i = 0; i < 3; ++i) {
+        mat[i][0] *= balance_r;
+        mat[i][2] *= balance_b;
+    }
+
+    /** small negative values are allowed. **/
+    double threshold = -3.0 * noise;
+
+    /** stats **/
+    int nfixed = 0;
+    int nnotfixed = 0;
+
+    /**
+    assume we're going to crop the image.
+    so garbage pixels on the border don't matter.
+    **/
+    int wd = planes.r_.width_;
+    int ht = planes.r_.height_;
+    for (int y = 1; y < ht-1; ++y) {
+        for (int x = 1; x < wd-1; ++x) {
+            /** get the source pixel **/
+            double in_r = planes.r_.get(x, y);
+            double in_g1 = planes.g1_.get(x, y);
+            double in_g2 = planes.g2_.get(x, y);
+            double in_b = planes.b_.get(x, y);
+
+            /** pin to 0 **/
+            in_r = std::max(0.0, in_r);
+            in_g1 = std::max(0.0, in_g1);
+            in_g2 = std::max(0.0, in_g2);
+            in_b = std::max(0.0, in_b);
+
+            /** compute srgb from g1 **/
+            double out_r1 = mat[0][0]*in_r + mat[0][1]*in_g1 + mat[0][2]*in_b;
+            double out_g1 = mat[1][0]*in_r + mat[1][1]*in_g1 + mat[1][2]*in_b;
+            double out_b1 = mat[2][0]*in_r + mat[2][1]*in_g1 + mat[2][2]*in_b;
+            bool bad1 = (out_r1 < threshold || out_g1 < threshold || out_b1 < threshold);
+
+            /** compute srgb from g2 **/
+            double out_r2 = mat[0][0]*in_r + mat[0][1]*in_g2 + mat[0][2]*in_b;
+            double out_g2 = mat[1][0]*in_r + mat[1][1]*in_g2 + mat[1][2]*in_b;
+            double out_b2 = mat[2][0]*in_r + mat[2][1]*in_g2 + mat[2][2]*in_b;
+            bool bad2 = (out_r2 < threshold || out_g2 < threshold || out_b2 < threshold);
+
+            if (bad1 && bad2 == false) {
+                /** fix by replacing a bad green with a good green. **/
+                planes.g1_.set(x, y, (int) in_g2);
+                bad1 = false;
+                ++nfixed;
+            }
+            else if (bad2 && bad1 == false) {
+                /** fix by replacing a bad green with a good green. **/
+                planes.g2_.set(x, y, (int) in_g1);
+                bad2 = false;
+                ++nfixed;
+            } else if (in_r >= in_b && in_r >= in_g1 && in_r >= in_g2) {
+                /** fix by replacing a bad red with the average of its neighbors. **/
+                int r0 = planes.r_.get(x, y-1);
+                int r1 = planes.r_.get(x-1, y);
+                int r2 = planes.r_.get(x+1, y);
+                int r3 = planes.r_.get(x, y+1);
+                int r = (r0 + r1 + r2 + r3 + 2) / 4;
+                planes.r_.set(x, y, r);
+                bad1 = false;
+                bad2 = false;
+                ++nfixed;
+            } else if (in_b >= in_r && in_b >= in_g1 && in_b >= in_g2) {
+                /** fix by replacing a bad blue with the average of its neighbors. **/
+                int b0 = planes.b_.get(x, y-1);
+                int b1 = planes.b_.get(x-1, y);
+                int b2 = planes.b_.get(x+1, y);
+                int b3 = planes.b_.get(x, y+1);
+                int b = (b0 + b1 + b2 + b3 + 2) / 4;
+                planes.b_.set(x, y, b);
+                bad1 = false;
+                bad2 = false;
+                ++nfixed;
+            } else {
+                /** unfixable pixel. **/
+            }
+
+            if (bad1 || bad2) {
+                /*LOG("suspect pixel at "<<x<<","<<y<<" in: "<<in_r<<","<<in_g1<<","<<in_g2<<","<<in_b
+                    <<" out1: "<<out_r1<<","<<out_g1<<","<<out_b1
+                    <<" out2: "<<out_r2<<","<<out_g2<<","<<out_b2);*/
+                ++nnotfixed;
+            }
+        }
+    }
+    LOG("fixed "<<nfixed<<" suspect pixels.");
+    LOG("did not fix "<<nnotfixed<<" suspect pixels.");
+}
+
 } // anonymous namespace
 
 void CameraParams::print() {
@@ -298,7 +417,7 @@ void Image::load_raw(
     remove bad pixels from the image.
     camera specific.
     **/
-    fix_bad_pixels(planes_);
+    fix_bad_pixels(planes_, noise_);
 
     rotate(planes_, rotation);
 
