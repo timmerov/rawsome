@@ -372,18 +372,10 @@ public:
         note order permutation.
         **/
         RggbDouble cam_mul;
-        if (opt_.wb_r_ > 0.0 && opt_.wb_b_ >= 0.0) {
-            LOG("using user white balance...");
-            cam_mul.r_ = opt_.wb_r_;
-            cam_mul.g1_ = 1.0;
-            cam_mul.g2_ = 1.0;
-            cam_mul.b_ = opt_.wb_b_;
-        } else {
-            cam_mul.r_ = image_.camera_.wb_r_;
-            cam_mul.g1_ = 1.0;
-            cam_mul.g2_ = 1.0;
-            cam_mul.b_ = image_.camera_.wb_b_;
-        }
+        cam_mul.r_ = image_.camera_.wb_r_;
+        cam_mul.g1_ = 1.0;
+        cam_mul.g2_ = 1.0;
+        cam_mul.b_ = image_.camera_.wb_b_;
 
         /** find the smallest multiplier. **/
         double f = std::min(cam_mul.r_, cam_mul.g1_);

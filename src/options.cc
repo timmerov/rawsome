@@ -178,8 +178,6 @@ bool Options::parse(
     in_filename_.clear();
     out_filename_.clear();
     halfsize_ = false;
-    wb_r_ = 0.0;
-    wb_b_ = 0.0;
     gamma0_ = 0.0;
     gamma1_ = 0.0;
     noise_ = 0.0;
@@ -193,12 +191,11 @@ bool Options::parse(
     deblur_right_ = 0;
     deblur_bottom_ = 0;
 
-    const char *options_short = "?i:o:w:n:d:W:ha:b:c:g:D:";
+    const char *options_short = "?i:o:n:d:W:ha:b:c:g:D:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
         {'o', "output"},
-        {'w', "white-balance"},
         {'n', "noise"},
         {'d', "dynamic"},
         {'W', "window"},
@@ -230,13 +227,7 @@ bool Options::parse(
         case 'o':
             out_filename_ = clo.value_;
             break;
-        case 'w': {
-            bool good = comma_separated_doubles_2(clo.value_, wb_r_, wb_b_);
-            if (good == false) {
-                return false;
-            }
-            break;
-        } case 'n':
+        case 'n':
             noise_ = std::atof(clo.value_);
             break;
         case 'd':
@@ -292,16 +283,6 @@ void Options::print_usage() {
     LOG("     the extension is replaced with \".png\".");
     LOG("");
     LOG("these operations are applied in this order:");
-    LOG("");
-    LOG("  -s --saturation saturation :");
-    LOG("     override saturation level.");
-    LOG("     if any sample is saturated then the entire pixel is considered saturated.");
-    LOG("     saturated pixels are converted to white in the pipeline.");
-    LOG("     set to a large value (~16000) to disable special handling.");
-    LOG("     caution: you may get hot pink in your images.");
-    LOG("     use smaller values (< ~8000) to brighten the raw samples.");
-    LOG("");
-    LOG("  -w --white-balance red,blue : override camera white balance.");
     LOG("");
     LOG("  -n --noise noise    : override noise floor when expanding dynamic range.");
     LOG("  -d --dynamic dynamic: sets the dynamic range expansion factor. default 1.5");
