@@ -184,18 +184,22 @@ bool Options::parse(
     in_filename_.clear();
     out_filename_.clear();
     halfsize_ = false;
-    auto_brightness_ = -1.0;
-    linear_brightness_ = 0.0;
+    black_ = -1.0;
+    white_ = -1.0;
+    auto_black_ = -1.0;
+    auto_white_ = -1.0;
     color_enhancement_ = 0.0;
 
-    const char *options_short = "?i:o:ha:b:c:";
+    const char *options_short = "?i:o:hb:w:a:A:c:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
         {'o', "output"},
         {'h', "halfsize"},
-        {'a', "auto-brightness"},
-        {'b', "linear-brightness"},
+        {'b', "black"},
+        {'w', "white"},
+        {'a', "auto-black"},
+        {'A', "auto-white"},
         {'c', "color-enhancement"},
         {0, nullptr}
     };
@@ -222,11 +226,17 @@ bool Options::parse(
         case 'h':
             halfsize_ = true;
             break;
-        case 'a':
-            auto_brightness_ = std::atof(clo.value_);
-            break;
         case 'b':
-            linear_brightness_ = std::atof(clo.value_);
+            black_= std::atof(clo.value_);
+            break;
+        case 'w':
+            white_= std::atof(clo.value_);
+            break;
+        case 'a':
+            auto_black_= std::atof(clo.value_);
+            break;
+        case 'A':
+            auto_white_= std::atof(clo.value_);
             break;
         case 'c':
             color_enhancement_ = std::atof(clo.value_);
@@ -254,14 +264,20 @@ void Options::print_usage() {
     LOG("");
     LOG("these operations are applied in this order:");
     LOG("");
-    LOG("  -h --halfsize       : disables demosaicing.");
+    LOG("  -h --halfsize : disables demosaicing.");
     LOG("     the bayer block of RGGB is treated as a single pixel.");
     LOG("");
-    LOG("  -a --auto-brightness fraction:");
+    LOG("  pixels are linearly scaled between the black level and the whtie level.");
+    LOG("  -b --black level : sets the black level.");
+    LOG("     set to -1.0 to disable. default -1.0");
+    LOG("  -w --white level : sets the white level.");
+    LOG("     set to -1.0 to disable. default -1.0");
+    LOG("  -A --auto-white fraction :");
     LOG("     this fraction of the brightest pixels will be forced to full white.");
-    LOG("     set to -1 to disable. default 0.");
-    LOG("  -b --linear-brightness brightness:");
-    LOG("     uniformly scale pixel values. default 1.0.");
+    LOG("     set to -1.0 to disable. default -1.0");
+    LOG("  -a --auto-black fraction :");
+    LOG("     this fraction of the darkest pixels will be forced to full black.");
+    LOG("     set to -1.0 to disable. default -1.0");
     LOG("");
     LOG("  -c --color-enhancement factor:");
     LOG("     convert to yuv. scale uv by factor. convert back to rgb.");

@@ -20,8 +20,10 @@ public:
     std::string in_filename_;
     std::string out_filename_;
     bool halfsize_ = false;
-    double auto_brightness_ = -1.0;
-    double linear_brightness_ = 0.0;
+    double black_ = -1.0;
+    double white_ = -1.0;
+    double auto_black_ = -1.0;
+    double auto_white_ = -1.0;
     double color_enhancement_ = 0.0;
 
     bool parse(int argc, clo_argv_t argv);

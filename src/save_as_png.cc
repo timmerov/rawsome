@@ -109,12 +109,10 @@ are they maybe literally camera noise?
 #include <cmath>
 #include <ctime>
 #include <iomanip>
-#include <vector>
+#include <random>
 #include <sstream>
 #include <thread>
-
-#include <chrono>
-#include <random>
+#include <vector>
 
 
 namespace {
@@ -128,13 +126,10 @@ public:
 
     Options opt_;
     Image image_;
-    int saturation_;
     std::vector<int> histogram_;
     Plane luminance_;
-    double lum_rx_ = 0.0;
-    double lum_gx_ = 0.0;
-    double lum_bx_ = 0.0;
-    double auto_brightness_ = 0.0;
+    int black_ = 0;
+    int white_ = 65535;
 
     int run(
         int argc,
@@ -160,7 +155,7 @@ public:
         interpolate();
         combine_greens();
         show_special_pixel();
-        determine_auto_brightness();
+        determine_black_and_white();
         convert_to_srgb();
         show_special_pixel();
         enhance_colors();
@@ -331,13 +326,11 @@ public:
         int range = 3.0 * double(nsaturated) * double(limit) / double(nbright);
         LOG("supersaturated range="<<range);
 
-        /** initialize the stupid c++ stupid random number generator. **/
-        std::srand(std::time(nullptr));
-        auto now = std::chrono::high_resolution_clock::now();
-        std::uint64_t seed = now.time_since_epoch().count();
-        std::uint64_t seed_lo = seed & 0xFFFFFFFF;
-        std::uint64_t seed_hi = seed >> 32;
-        std::seed_seq ss{seed_lo, seed_hi};
+        /**
+        initialize the stupid c++ stupid random number generator.
+        use a constant seed so we get consistent results every run.
+        **/
+        std::seed_seq ss{int(0x12345678), int(0x9ABCDEF0)};
         std::mt19937_64 rng;
         rng.seed(ss);
         std::uniform_real_distribution<double> unif(0.0, 1.0);
@@ -512,11 +505,8 @@ public:
         image_.planes_.g2_.crop(1, 1, wd+1, ht+1);
         image_.planes_.b_.crop(0, 1, wd, ht+1);
 
-        LOG("interpolated width ="<<image_.planes_.r_.width_);
-        LOG("interpolated height="<<image_.planes_.r_.height_);
-
-        /** redo-desaturation after crop-shifting. **/
-        desaturate_pixels();
+        LOG("interpolated width : "<<image_.planes_.r_.width_);
+        LOG("interpolated height: "<<image_.planes_.r_.height_);
     }
 
     void combine_greens() {
@@ -529,11 +519,12 @@ public:
         }
     }
 
-    void determine_auto_brightness() {
-        LOG("determining auto brightness...");
+    void determine_black_and_white() {
+        LOG("determining black and white levels...");
 
         std::vector<int> histogram;
-        histogram.resize(65536, 0);
+        const int kHistSize = 2 * 65536;
+        histogram.resize(kHistSize, 0);
 
         compute_luminance(image_.planes_, luminance_);
 
@@ -542,36 +533,93 @@ public:
         for (int y = 0; y < ht; ++y) {
             for (int x = 0; x < wd; ++x) {
                 int lum = luminance_.get(x, y);
-                int idx = pin_to_16bits(lum);
-                ++histogram[idx];
+                if (lum < 0) {
+                    lum = 0;
+                } else if (lum >= kHistSize) {
+                    lum = kHistSize-1;
+                }
+                ++histogram[lum];
             }
         }
 
-        for (int i = 65535; i >= 0; --i) {
+        /**
+        find the brightest and darkest pixels.
+        guides the user if they
+        **/
+        int cur_black = 0;
+        int cur_white = 0;
+        for (int i = kHistSize-1; i >= 0; --i) {
             if (histogram[i] > 0) {
-                double brightest = double(i) / 65535.0;
-                double brightness = 1.0 / brightest;
-                LOG("current brightness: "<<brightest);
-                LOG("proper brightness: "<<brightness);
+                cur_white = i;
                 break;
             }
         }
-
-        auto_brightness_ = 0.0;
-        if (opt_.auto_brightness_ < 0.0) {
-            return;
-        }
-
-        int sz = wd * ht;
-        int target = sz * opt_.auto_brightness_;
-        int count = 0;
-        for (int i = 65535; i >= 0; --i) {
-            count += histogram[i];
-            if (count >= target) {
-                auto_brightness_ = 65535.0 / double(i);
+        for (int i = 0; i < kHistSize; ++i) {
+            if (histogram[i] > 0) {
+                cur_black = i;
                 break;
             }
         }
+        double obs_black = double(cur_black) / 65535.0;
+        double obs_white = double(cur_white) / 65535.0;
+        LOG("observed black: "<<obs_black);
+        LOG("observed white: "<<obs_white);
+
+        double auto_black = opt_.auto_black_;
+        double auto_white = opt_.auto_white_;
+        LOG("auto black: "<<auto_black);
+        LOG("auto white: "<<auto_white);
+
+        black_ = 0;
+        white_ = 65535;
+        const char *which_black = "default";
+        const char *which_white = "default";
+
+        /** user black has priority over user auto-black. **/
+        if (opt_.black_ >= 0.0) {
+            which_black = "user";
+            black_ = opt_.black_ * 65535.0;
+        } else if (auto_black >= 0.0) {
+            which_black = "auto";
+            int sz = wd * ht;
+            int target = sz * auto_black;
+            int count = 0;
+            for (int i = 0; i < kHistSize; ++i) {
+                int c = histogram[i];
+                if (c > 0) {
+                    count += c;
+                    if (count >= target) {
+                        black_ = i;
+                        break;
+                    }
+                }
+            }
+        }
+        /** user white has priority over user auto-white. **/
+        if (opt_.white_ >= 0.0) {
+            which_white = "user";
+            white_ = opt_.white_ * 65535.0;
+        } else if (auto_white >= 0.0) {
+            which_white = "auto";
+            int sz = wd * ht;
+            int target = sz * auto_white;
+            int count = 0;
+            for (int i = kHistSize-1; i >= 0; --i) {
+                int c = histogram[i];
+                if (c > 0) {
+                    count += c;
+                    if (count >= target) {
+                        white_ = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        double black = double(black_) / 65535.0;
+        double white = double(white_) / 65535.0;
+        LOG("black: "<<black<<" ("<<which_black<<")");
+        LOG("white: "<<white<<" ("<<which_white<<")");
     }
 
     void convert_to_srgb() {
@@ -588,18 +636,12 @@ public:
             {+0.042001, -0.519143, +1.477141}
         };
 
-        /** account for user specified auto or linear brightness. **/
-        double brightness = 1.0;
-        if (opt_.auto_brightness_ >= 0.0) {
-            LOG("using user auto brightness: "<<opt_.auto_brightness_<<" "<<auto_brightness_);
-            brightness = auto_brightness_;
-        } else if (opt_.linear_brightness_ > 0.0) {
-            LOG("using user linear brightness: "<<opt_.linear_brightness_);
-            brightness = opt_.linear_brightness_;
-        }
+        /** account for user specified black and white levels. **/
+        int range = white_ - black_;
+        double scale = 65535.0 / double(range);
         for (int k = 0; k < 3; ++k) {
             for (int i = 0; i < 3; ++i) {
-                mat[i][k] *= brightness;
+                mat[i][k] *= scale;
             }
         }
 
@@ -609,6 +651,11 @@ public:
             int in_r = image_.planes_.r_.samples_[i];
             int in_g = image_.planes_.g1_.samples_[i];
             int in_b = image_.planes_.b_.samples_[i];
+
+            /** subtrack user black. **/
+            in_r -= black_;
+            in_g -= black_;
+            in_b -= black_;
 
             double out_r;
             double out_g;

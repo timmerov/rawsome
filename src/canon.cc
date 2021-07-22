@@ -51,7 +51,7 @@ void determine_black(
     RggbPixel &black,
     int &noise
 ) {
-    LOG("determining black...");
+    LOG("determining camera black...");
     /**
     the top rows and left columns of pixels are black.
     also set the black noise level.
@@ -82,9 +82,19 @@ void crop_black(
     the rest of the pixels are the actual image.
     **/
     /** left, top, right, bottom **/
-    planes.crop(38, 18, planes.r_.width_, planes.r_.height_);
-    LOG("cropped width ="<<planes.r_.width_);
-    LOG("cropped height="<<planes.r_.height_);
+    const int kCropRows = 18;
+    const int kCropCols = 38;
+    int wd = planes.r_.width_;
+    int ht = planes.r_.height_;
+    /** remove the black rows and columns. **/
+    wd -= kCropCols;
+    ht -= kCropRows;
+    /** ensure we have an even number. **/
+    wd = wd / 2 * 2;
+    ht = ht / 2 * 2;
+    planes.crop(kCropCols, kCropRows, wd+kCropCols, ht+kCropRows);
+    LOG("cropped width : "<<planes.r_.width_);
+    LOG("cropped height: "<<planes.r_.height_);
 }
 
 void compute_luminance(
