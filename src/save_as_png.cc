@@ -410,20 +410,6 @@ public:
         image_.planes_.multiply(cam_mul);
     }
 
-    void maybe_compute_luminance() {
-        /**
-        optionally used multiple places.
-        no sense computing luminance more than once.
-        **/
-        int wd = luminance_.width_;
-        int ht = luminance_.height_;
-        if (wd > 0 && ht > 0) {
-            return;
-        }
-
-        compute_luminance(image_.planes_, luminance_);
-    }
-
     void interpolate() {
         LOG("interpolating pixels...");
 
@@ -549,7 +535,7 @@ public:
         std::vector<int> histogram;
         histogram.resize(65536, 0);
 
-        maybe_compute_luminance();
+        compute_luminance(image_.planes_, luminance_);
 
         int wd = luminance_.width_;
         int ht = luminance_.height_;
@@ -586,7 +572,6 @@ public:
                 break;
             }
         }
-
     }
 
     void convert_to_srgb() {
