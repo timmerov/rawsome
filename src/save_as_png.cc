@@ -157,8 +157,6 @@ public:
         show_special_pixel();
         scale_image();
         show_special_pixel();
-        adjust_dynamic_range();
-        show_special_pixel();
         interpolate();
         combine_greens();
         show_special_pixel();
@@ -410,97 +408,6 @@ public:
 
         /** white balance. **/
         image_.planes_.multiply(cam_mul);
-    }
-
-    void adjust_dynamic_range() {
-        LOG("adjusting dynamic range...");
-        if (opt_.drama_ <= 0.0) {
-            LOG("dynamic range is not enabled.");
-            return;
-        }
-
-        /**
-        this technique has promise.
-        but the algorithm needs attention.
-        the shift and drama parameters work.
-        but small values can make images look ridiculous.
-        the downsampling technique has severe issues with macro blocking.
-        the shifting technique doesn't play nicely with gamma correction.
-        expanding mid range luminances works nicely for the moon.
-        the shifting technique tends to just amplify noise in the dark areas.
-
-        need to handle areas that overflow one component.
-        that cap will shift the color.
-
-        am looking at this paper:
-        Image Display Algorithms for High and Low Dynamic Range Display Devices
-        by Erik Reinhard Timo Kunkel Yoann Marion Kadi Bouatouch Jonathan Brouillat
-        **/
-
-        /** compute luminance for all pixels. **/
-        maybe_compute_luminance();
-
-        int window = 32;
-        if (opt_.window_ > 0) {
-            LOG("using user dynamic range window...");
-            window = opt_.window_;
-        }
-        LOG("dynamic range window: "<<window);
-
-        /** apply gaussian blur to get average lumance. **/
-        Plane average(luminance_);
-        average.gaussian(window);
-
-        /** expand the noise floor a bit. **/
-        int noise = image_.noise_;
-        if (opt_.noise_ > 0) {
-            LOG("using user noise floor...");
-            noise = opt_.noise_;
-        }
-        LOG("noise floor: "<<noise);
-        noise = noise * 150 / 100;
-
-        /** dramatically move a pixel from its average luminance. **/
-        double drama = opt_.drama_;
-        LOG("dynamic range expansion factor: "<<drama);
-
-        int wd = luminance_.width_;
-        int ht = luminance_.height_;
-        for (int y = 0; y < ht; ++y) {
-            for (int x = 0; x < wd; ++x) {
-                int lum = luminance_.get(x, y);
-
-                /** ignore pixels below the noise floor. **/
-                if (lum <= noise) {
-                    continue;
-                }
-
-                /** rescale the average luminance. **/
-                double avg_lum = average.get(x, y);
-
-                /** move the colors of this pixel away from the average luminance. **/
-                double target_lum = avg_lum + drama*(lum - avg_lum);
-
-                /** get the components. **/
-                double r = image_.planes_.r_.get(x, y);
-                double g1 = image_.planes_.g1_.get(x, y);
-                double g2 = image_.planes_.g2_.get(x, y);
-                double b = image_.planes_.b_.get(x, y);
-
-                /** scale the components. **/
-                double factor = target_lum / lum;
-                r *= factor;
-                g1 *= factor;
-                g2 *= factor;
-                b *= factor;
-
-                /** store the dynamically enhanced pixel **/
-                image_.planes_.r_.set(x, y, r);
-                image_.planes_.g1_.set(x, y, g1);
-                image_.planes_.g2_.set(x, y, g2);
-                image_.planes_.b_.set(x, y, b);
-            }
-        }
     }
 
     void maybe_compute_luminance() {

@@ -184,21 +184,15 @@ bool Options::parse(
     in_filename_.clear();
     out_filename_.clear();
     halfsize_ = false;
-    noise_ = 0.0;
-    drama_ = 0.0;
-    window_ = 0;
     auto_brightness_ = -1.0;
     linear_brightness_ = 0.0;
     color_enhancement_ = 0.0;
 
-    const char *options_short = "?i:o:n:d:W:ha:b:c:";
+    const char *options_short = "?i:o:ha:b:c:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
         {'o', "output"},
-        {'n', "noise"},
-        {'d', "dynamic"},
-        {'W', "window"},
         {'h', "halfsize"},
         {'a', "auto-brightness"},
         {'b', "linear-brightness"},
@@ -224,15 +218,6 @@ bool Options::parse(
             break;
         case 'o':
             out_filename_ = clo.value_;
-            break;
-        case 'n':
-            noise_ = std::atof(clo.value_);
-            break;
-        case 'd':
-            drama_ = std::atof(clo.value_);
-            break;
-        case 'W':
-            window_ = std::atoi(clo.value_);
             break;
         case 'h':
             halfsize_ = true;
@@ -268,10 +253,6 @@ void Options::print_usage() {
     LOG("     the extension is replaced with \".png\".");
     LOG("");
     LOG("these operations are applied in this order:");
-    LOG("");
-    LOG("  -n --noise noise    : override noise floor when expanding dynamic range.");
-    LOG("  -d --dynamic dynamic: sets the dynamic range expansion factor. default 1.5");
-    LOG("  -W --window window  : set the dynamic range gaussian window. default 32");
     LOG("");
     LOG("  -h --halfsize       : disables demosaicing.");
     LOG("     the bayer block of RGGB is treated as a single pixel.");
