@@ -33,7 +33,6 @@ public:
 
     /** multiply every sample by factor. **/
     void multiply(double factor);
-    void multiply_sat(double factor);
 
     /** crop to rectangle **/
     void crop(int left, int top, int right, int bottom);
@@ -44,15 +43,11 @@ public:
 
     /** interpolate intermediate pixels. **/
     void interpolate_1331();
-    void interpolate_1331_sat();
     void interpolate_1331_mt();
-    void interpolate_1331_sat_mt();
 
     /** interpolate intermediate horizontal pixels. **/
     void interpolate_horz_1331();
-    void interpolate_horz_1331_sat();
     void interpolate_horz_1331_mt();
-    void interpolate_horz_1331_sat_mt();
 
     /** downsample by 2x. **/
     void downsample(Plane &src);
@@ -92,7 +87,6 @@ public:
 
     /** multiply every pixel by factor. **/
     void multiply(RggbDouble &factor);
-    void multiply_sat(RggbDouble &factor);
     void multiply3(double factor);
     void multiply4(double factor);
 
@@ -104,7 +98,6 @@ public:
 
     /** interpolate intermediate pixels. **/
     void interpolate_1331();
-    void interpolate_1331_sat();
 
     /** apply gamma. **/
     void apply_gamma(double pwr, double ts, int white);

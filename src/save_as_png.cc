@@ -22,8 +22,8 @@ note: ONE of those 4 pixels will have a value.
 the other THREE will be zero.
 pretty sure the bayer pattern is:
      x     x+1
-y  : R/0   G1/1
-y+1: G2/3  B/2
+y  : G2/3  B/2
+y+1: R/0   G1/1
 where the /# is the above color component index as per above.
 one assumes one is expected to interpolate rgb values for everywhere else.
 the rgb component values range from about 2k to 14k.
@@ -83,9 +83,6 @@ re interpolation...
 currently we interpolate rgbg values for every pixel.
 using a 1331 filter.
 there are probably other methods.
-
-note: there seems to be a black band top and left of some images.
-perhaps there's padding in the image data.
 
 note: there seem to be more r&b pixels than g pixels.
 strange. why?
@@ -156,7 +153,6 @@ public:
 
         image_.camera_.print();
         show_special_pixel();
-        determine_saturation();
         desaturate_pixels();
         show_special_pixel();
         scale_image();
@@ -220,44 +216,33 @@ public:
         */
     }
 
-    void determine_saturation() {
-        LOG("determining saturation...");
+    void desaturate_pixels() {
+        LOG("desaturating pixels...");
 
-        if (opt_.saturation_ > 0) {
-            LOG("using user saturation...");
-            saturation_ = opt_.saturation_;
-        } else {
-            /**
-            the camera sensor saturates at less than the maximum value.
-            **/
-            int satr = determine_saturation(image_.planes_.r_);
-            int satg1 = determine_saturation(image_.planes_.g1_);
-            int satg2 = determine_saturation(image_.planes_.g2_);
-            int satb = determine_saturation(image_.planes_.b_);
-            saturation_ = std::max(satr, satg1);
-            saturation_ = std::max(saturation_, satg2);
-            saturation_ = std::max(saturation_, satb);
-        }
-
-        LOG("saturation is: "<<saturation_);
+        /** by component **/
+        desaturate_pixels(image_.planes_.r_);
+        desaturate_pixels(image_.planes_.g1_);
+        desaturate_pixels(image_.planes_.g2_);
+        desaturate_pixels(image_.planes_.b_);
     }
 
-    int determine_saturation(
+    /**
+    libraw gives us a maximum value=16383.
+    however, the actual saturation point is less than that.
+    it's around 13583.
+    but we will need to determine the exact values.
+    dump pixels into a histogram centered around 13583.
+    if there are no saturated pixels then we should have a long tail.
+    otherwise, there will be a spike at the end of the tail.
+    ie we need to find the thagomizer.
+    **/
+    const int kSaturation = 13583 - 2046; /** we need to subtract black. **/
+
+    void desaturate_pixels(
         Plane &plane
     ) {
-        /**
-        libraw gives us a maximum value=16383.
-        however, the actual saturation point is less than that.
-        it's around 13583.
-        but we will need to determine the exact values.
-        dump pixels into a histogram centered around 13583.
-        if there are no saturated pixels then we should have a long tail.
-        otherwise, there will be a spike at the end of the tail.
-        ie we need to find the thagomizer.
-        **/
         const int kSatMax = 16383;
-        const int kSatExpected = 13583 - 2046; /** we need to subtract black. **/
-        const int kSatHalf = kSatMax - kSatExpected;
+        const int kSatHalf = kSatMax - kSaturation;
         const int kSatSize = 2*kSatHalf;
         const int kSatThreshold = kSatMax - kSatSize;
 
@@ -285,8 +270,8 @@ public:
 
         /** for very black pictures, use the expected value. **/
         if (saturation < 12) {
-            LOG("saturation: "<<kSatExpected<<" (default)");
-            return kSatExpected;
+            LOG("saturation: "<<kSaturation<<" (default)");
+            return;
         }
 
         /**
@@ -323,16 +308,15 @@ public:
         if (big_jump == false) {
             saturation += 2;
             saturation += kSatThreshold;
-            saturation = std::max(saturation, kSatExpected);
+            saturation = std::max(saturation, kSaturation);
             LOG("saturation: "<<saturation<<" (small tail)");
-            return saturation;
+            return;
         }
 
         /**
-        search key: super-saturated
         replace saturated pixels with a guess.
+        estimate the super-saturated range.
         **/
-        /** estimate the super-saturated range. **/
         int limit = saturation - kSatThreshold;
         int nbright = 0;
         for (int i = 0; i < limit; ++i) {
@@ -343,7 +327,6 @@ public:
             nsaturated += histogram_[i];
         }
         /**
-        search key: super-saturated
         make the super saturated range somewhat less dense
         than the density of the bright pixels.
         **/
@@ -362,7 +345,6 @@ public:
         std::uniform_real_distribution<double> unif(0.0, 1.0);
 
         /**
-        search key: super-saturated
         find satured pixels.
         replace them with a random value in the super-saturated range.
         **/
@@ -374,42 +356,6 @@ public:
             int rnd = range * unif(rng);
             plane.samples_[i] = saturation + rnd;
         }
-
-        return saturation;
-    }
-
-    void desaturate_pixels() {
-        /**
-        search key: super-saturated
-        setting saturated pixels to white is disabled.
-        the current approach is to replace the saturated pixel with a guess.
-        **/
-        return;
-
-        LOG("setting saturated pixels to white...");
-        /** if any component is saturated then saturate all components. **/
-        int count = 0;
-        int wd = image_.planes_.r_.width_;
-        int ht = image_.planes_.r_.height_;
-        int sz = wd * ht;
-        for (int i = 0; i < sz; ++i) {
-            int r = image_.planes_.r_.samples_[i];
-            int g1 = image_.planes_.g1_.samples_[i];
-            int g2 = image_.planes_.g2_.samples_[i];
-            int b = image_.planes_.b_.samples_[i];
-            if (r >= kSaturated
-            ||  g1 >= kSaturated
-            ||  g2 >= kSaturated
-            ||  b >= kSaturated) {
-                image_.planes_.r_.samples_[i] = kSaturated;
-                image_.planes_.g1_.samples_[i] = kSaturated;
-                image_.planes_.g2_.samples_[i] = kSaturated;
-                image_.planes_.b_.samples_[i] = kSaturated;
-                ++count;
-            }
-        }
-        double pct = 100.0 * double(count) / double(sz);
-        LOG("saturated pixels: "<<count<<" "<<pct<<"%");
     }
 
     void scale_image() {
@@ -457,10 +403,10 @@ public:
         (16383 - black) * cam_mul_new = 1.0 = cam_mul_org
         cam_mul_new = cam_mul_org / (16383 - black)
         **/
-        cam_mul.r_ /= saturation_;
-        cam_mul.g1_ /= saturation_;
-        cam_mul.g2_ /= saturation_;
-        cam_mul.b_ /= saturation_;
+        cam_mul.r_ /= kSaturation;
+        cam_mul.g1_ /= kSaturation;
+        cam_mul.g2_ /= kSaturation;
+        cam_mul.b_ /= kSaturation;
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** adjust to span full 16 bit range. **/
@@ -471,7 +417,7 @@ public:
         //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
 
         /** white balance. **/
-        image_.planes_.multiply_sat(cam_mul);
+        image_.planes_.multiply(cam_mul);
     }
 
     void adjust_dynamic_range() {
@@ -534,10 +480,6 @@ public:
 
                 /** ignore pixels below the noise floor. **/
                 if (lum <= noise) {
-                    continue;
-                }
-                /** ignore pixels below the noise floor and above the saturation level. **/
-                if (lum >= kSaturated) {
                     continue;
                 }
 
@@ -616,12 +558,6 @@ public:
         tanspose again while medium sized.
         add pixels horizontally again.
         **/
-        /**
-        search key: super-saturated
-        currently there are no saturated pixels.
-        we've replaced them with a guess.
-        **/
-        //image_.planes_.interpolate_1331_sat();
         image_.planes_.interpolate_1331();
 
         /**
@@ -794,38 +730,19 @@ public:
             double out_g;
             double out_b;
 
-            /** ensure saturated pixels stay saturated. **/
-            /**
-            search key: super-saturated
-            currently there are no saturated pixels.
-            we've replaced them with a guess.
-            **/
-            /*if (in_r >= kSaturated
-            &&  in_g >= kSaturated
-            &&  in_b >= kSaturated) {
-                out_r = 65535.0;
-                out_g = 65535.0;
-                out_b = 65535.0;
-            } else*/ {
-                /** transform by matrix multiplication. **/
-                out_r = mat[0][0]*in_r + mat[0][1]*in_g + mat[0][2]*in_b;
-                out_g = mat[1][0]*in_r + mat[1][1]*in_g + mat[1][2]*in_b;
-                out_b = mat[2][0]*in_r + mat[2][1]*in_g + mat[2][2]*in_b;
+            /** transform by matrix multiplication. **/
+            out_r = mat[0][0]*in_r + mat[0][1]*in_g + mat[0][2]*in_b;
+            out_g = mat[1][0]*in_r + mat[1][1]*in_g + mat[1][2]*in_b;
+            out_b = mat[2][0]*in_r + mat[2][1]*in_g + mat[2][2]*in_b;
 
-                /** ensure we don't change color on overflow. **/
-                /**
-                search key: super-saturated
-                currently there are no saturated pixels.
-                we've replaced them with a guess.
-                **/
-                /*int maxc = std::max(std::max(out_r, out_g), out_b);
-                if (maxc > 65535.0) {
-                    double factor = 65535.0 / maxc;
-                    out_r *= factor;
-                    out_g *= factor;
-                    out_b *= factor;
-                }*/
-            }
+            /** ensure we don't change color on overflow. **/
+            /*int maxc = std::max(std::max(out_r, out_g), out_b);
+            if (maxc > 65535.0) {
+                double factor = 65535.0 / maxc;
+                out_r *= factor;
+                out_g *= factor;
+                out_b *= factor;
+            }*/
 
             /** overwrite old values. **/
             image_.planes_.r_.samples_[i] = out_r;
@@ -875,37 +792,28 @@ public:
             double out_g;
             double out_b;
 
-            /** ensure saturated pixels stay saturated. **/
-            if (in_r >= kSaturated
-            &&  in_g >= kSaturated
-            &&  in_b >= kSaturated) {
-                out_r = 65535.0;
-                out_g = 65535.0;
-                out_b = 65535.0;
-            } else {
-                /** transform to yuv. **/
-                double y = +0.257*in_r + 0.504*in_g + 0.098*in_b;
-                double u = -0.148*in_r - 0.291*in_g + 0.439*in_b;
-                double v = +0.439*in_r - 0.368*in_g - 0.071*in_b;
+            /** transform to yuv. **/
+            double y = +0.257*in_r + 0.504*in_g + 0.098*in_b;
+            double u = -0.148*in_r - 0.291*in_g + 0.439*in_b;
+            double v = +0.439*in_r - 0.368*in_g - 0.071*in_b;
 
-                /** enhance colors. **/
-                y *= 1.164;
-                u *= factor;
-                v *= factor;
+            /** enhance colors. **/
+            y *= 1.164;
+            u *= factor;
+            v *= factor;
 
-                /** transform back to rgb. **/
-                out_r = y + 1.596*v;
-                out_g = y - 0.392*u - 0.813*v;
-                out_b = y + 2.017*u;
+            /** transform back to rgb. **/
+            out_r = y + 1.596*v;
+            out_g = y - 0.392*u - 0.813*v;
+            out_b = y + 2.017*u;
 
-                /** ensure we don't change color on overflow. **/
-                int maxc = std::max(std::max(out_r, out_g), out_b);
-                if (maxc > 65535.0) {
-                    double factor = 65535.0 / maxc;
-                    out_r *= factor;
-                    out_g *= factor;
-                    out_b *= factor;
-                }
+            /** ensure we don't change color on overflow. **/
+            int maxc = std::max(std::max(out_r, out_g), out_b);
+            if (maxc > 65535.0) {
+                double factor = 65535.0 / maxc;
+                out_r *= factor;
+                out_g *= factor;
+                out_b *= factor;
             }
 
             /** overwrite old values. **/

@@ -526,7 +526,7 @@ public:
         LOG("white balance: R="<<cam_mul.r_<<" B="<<cam_mul.b_);
 
         /** white balance. **/
-        stack_.planes_.multiply_sat(cam_mul);
+        stack_.planes_.multiply(cam_mul);
     }
 
     void combine_greens() {

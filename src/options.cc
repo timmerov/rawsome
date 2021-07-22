@@ -178,7 +178,6 @@ bool Options::parse(
     in_filename_.clear();
     out_filename_.clear();
     halfsize_ = false;
-    saturation_ = 0;
     wb_r_ = 0.0;
     wb_b_ = 0.0;
     gamma0_ = 0.0;
@@ -194,12 +193,11 @@ bool Options::parse(
     deblur_right_ = 0;
     deblur_bottom_ = 0;
 
-    const char *options_short = "?i:o:s:w:n:d:W:ha:b:c:g:D:";
+    const char *options_short = "?i:o:w:n:d:W:ha:b:c:g:D:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
         {'o', "output"},
-        {'s', "saturation"},
         {'w', "white-balance"},
         {'n', "noise"},
         {'d', "dynamic"},
@@ -231,9 +229,6 @@ bool Options::parse(
             break;
         case 'o':
             out_filename_ = clo.value_;
-            break;
-        case 's':
-            saturation_ = std::atoi(clo.value_);
             break;
         case 'w': {
             bool good = comma_separated_doubles_2(clo.value_, wb_r_, wb_b_);
