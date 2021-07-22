@@ -31,6 +31,8 @@ where X% of the pixels consume 1-X% of the range.
 #include <sstream>
 
 namespace {
+/** we may want this again the future. **/
+#if 0
 bool comma_separated_doubles_2(
     const char *s,
     double &x,
@@ -63,6 +65,7 @@ bool comma_separated_doubles_2(
     }
     return true;
 }
+#endif
 
 bool comma_separated_ints_4(
     const char *s,
@@ -178,8 +181,6 @@ bool Options::parse(
     in_filename_.clear();
     out_filename_.clear();
     halfsize_ = false;
-    gamma0_ = 0.0;
-    gamma1_ = 0.0;
     noise_ = 0.0;
     drama_ = 0.0;
     window_ = 0;
@@ -191,7 +192,7 @@ bool Options::parse(
     deblur_right_ = 0;
     deblur_bottom_ = 0;
 
-    const char *options_short = "?i:o:n:d:W:ha:b:c:g:D:";
+    const char *options_short = "?i:o:n:d:W:ha:b:c:D:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
@@ -203,7 +204,6 @@ bool Options::parse(
         {'a', "auto-brightness"},
         {'b', "linear-brightness"},
         {'c', "color-enhancement"},
-        {'g', "gamma"},
         {'D', "deblur"},
         {0, nullptr}
     };
@@ -248,13 +248,7 @@ bool Options::parse(
         case 'c':
             color_enhancement_ = std::atof(clo.value_);
             break;
-        case 'g': {
-            bool good = comma_separated_doubles_2(clo.value_, gamma0_, gamma1_);
-            if (good == false) {
-                return false;
-            }
-            break;
-        } case 'D': {
+        case 'D': {
             bool good = comma_separated_ints_4(clo.value_, deblur_left_, deblur_top_, deblur_right_, deblur_bottom_);
             if (good == false) {
                 return false;
@@ -300,9 +294,6 @@ void Options::print_usage() {
     LOG("  -c --color-enhancement factor:");
     LOG("     convert to yuv. scale uv by factor. convert back to rgb.");
     LOG("     default 0.0.");
-    LOG("");
-    LOG("  -g --gamma g0,g1    : override camera gamma. default 2.22,4.5");
-    LOG("     set to 1 1 to disable gamma correction.");
     LOG("");
     LOG("  -D --deblur t,l,b,r : deblur image. default 0,0,0,0");
     LOG("     derive the blur kernel from the patch.");

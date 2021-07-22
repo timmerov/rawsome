@@ -20,8 +20,6 @@ public:
     std::string in_filename_;
     std::string out_filename_;
     bool halfsize_ = false;
-    double gamma0_ = 0.0;
-    double gamma1_ = 0.0;
     int noise_ = 0;
     double drama_ = 0.0;
     int window_ = 0;

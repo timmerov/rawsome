@@ -818,17 +818,9 @@ public:
     void apply_gamma() {
         LOG("applying gamma correction...");
 
-        double gamma0;
-        double gamma1;
-        if (opt_.gamma0_ > 0.0 && opt_.gamma1_ > 0.0) {
-            LOG("using user gamma correction...");
-            gamma0 = opt_.gamma0_;
-            gamma1 = opt_.gamma1_;
-        } else {
-            /** using camera's gamma. **/
-            gamma0 = image_.camera_.gamma0_;
-            gamma1 = image_.camera_.gamma1_;
-        }
+        /** use camera's gamma. **/
+        double gamma0 = image_.camera_.gamma0_;
+        double gamma1 = image_.camera_.gamma1_;
         double pwr = 1.0 / gamma0;
         double ts = gamma1;
 
