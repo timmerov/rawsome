@@ -116,6 +116,10 @@ are they maybe literally camera noise?
 #include <sstream>
 #include <thread>
 
+#include <chrono>
+#include <random>
+
+
 namespace {
 
 const int kFullySaturated = (1<<30)-1;
@@ -175,6 +179,8 @@ public:
     }
 
     void show_special_pixel() {
+        /** show the special pixel. **/
+        /*
         int x = 1924;
         int y = 906;
         int r = image_.planes_.r_.get(x, y);
@@ -182,7 +188,10 @@ public:
         int g2 = image_.planes_.g2_.get(x, y);
         int b = image_.planes_.b_.get(x, y);
         LOG("special pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
-        /*--y;
+        */
+        /** show its neighbors. **/
+        /*
+        --y;
         r = image_.planes_.r_.get(x, y);
         g1 = image_.planes_.g1_.get(x, y);
         g2 = image_.planes_.g2_.get(x, y);
@@ -207,7 +216,8 @@ public:
         g1 = image_.planes_.g1_.get(x, y);
         g2 = image_.planes_.g2_.get(x, y);
         b = image_.planes_.b_.get(x, y);
-        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);*/
+        LOG("neighbor pixel x,y="<<x<<","<<y<<" rggb="<<r<<" "<<g1<<" "<<g2<<" "<<b);
+        */
     }
 
     void determine_saturation() {
@@ -275,7 +285,7 @@ public:
 
         /** for very black pictures, use the expected value. **/
         if (saturation < 12) {
-            LOG("saturation method: default");
+            LOG("saturation: "<<kSatExpected<<" (default)");
             return kSatExpected;
         }
 
@@ -288,6 +298,7 @@ public:
         if they're mostly small values but there's a big jump.
         then set the saturation before the big jump.
         **/
+        bool big_jump = false;
         int idx = saturation - 12;
         int c0 = histogram_[idx];
         c0 = std::max(c0, 100);
@@ -302,20 +313,79 @@ public:
                 **/
                 saturation = idx - 2;
                 saturation += kSatThreshold;
-                LOG("saturation method: saturated");
-                return saturation;
+                LOG("saturation: "<<saturation<<" (saturated)");
+                big_jump = true;
+                break;
             }
         }
 
         /** no big jump. **/
-        saturation += 2;
-        saturation += kSatThreshold;
-        saturation = std::max(saturation, kSatExpected);
-        LOG("saturation method: perfect tail");
+        if (big_jump == false) {
+            saturation += 2;
+            saturation += kSatThreshold;
+            saturation = std::max(saturation, kSatExpected);
+            LOG("saturation: "<<saturation<<" (small tail)");
+            return saturation;
+        }
+
+        /**
+        search key: super-saturated
+        replace saturated pixels with a guess.
+        **/
+        /** estimate the super-saturated range. **/
+        int limit = saturation - kSatThreshold;
+        int nbright = 0;
+        for (int i = 0; i < limit; ++i) {
+            nbright += histogram_[i];
+        }
+        int nsaturated = 0;
+        for (int i = limit; i < kSatSize; ++i) {
+            nsaturated += histogram_[i];
+        }
+        /**
+        search key: super-saturated
+        make the super saturated range somewhat less dense
+        than the density of the bright pixels.
+        **/
+        int range = 3.0 * double(nsaturated) * double(limit) / double(nbright);
+        LOG("supersaturated range="<<range);
+
+        /** initialize the stupid c++ stupid random number generator. **/
+        std::srand(std::time(nullptr));
+        auto now = std::chrono::high_resolution_clock::now();
+        std::uint64_t seed = now.time_since_epoch().count();
+        std::uint64_t seed_lo = seed & 0xFFFFFFFF;
+        std::uint64_t seed_hi = seed >> 32;
+        std::seed_seq ss{seed_lo, seed_hi};
+        std::mt19937_64 rng;
+        rng.seed(ss);
+        std::uniform_real_distribution<double> unif(0.0, 1.0);
+
+        /**
+        search key: super-saturated
+        find satured pixels.
+        replace them with a random value in the super-saturated range.
+        **/
+        for (int i = 0; i < sz; ++i) {
+            int p = plane.samples_[i];
+            if (p < saturation) {
+                continue;
+            }
+            int rnd = range * unif(rng);
+            plane.samples_[i] = saturation + rnd;
+        }
+
         return saturation;
     }
 
     void desaturate_pixels() {
+        /**
+        search key: super-saturated
+        setting saturated pixels to white is disabled.
+        the current approach is to replace the saturated pixel with a guess.
+        **/
+        return;
+
         LOG("setting saturated pixels to white...");
         /** if any component is saturated then saturate all components. **/
         int count = 0;
@@ -546,7 +616,13 @@ public:
         tanspose again while medium sized.
         add pixels horizontally again.
         **/
-        image_.planes_.interpolate_1331_sat();
+        /**
+        search key: super-saturated
+        currently there are no saturated pixels.
+        we've replaced them with a guess.
+        **/
+        //image_.planes_.interpolate_1331_sat();
+        image_.planes_.interpolate_1331();
 
         /**
         at this point we have alignment issues.
@@ -719,26 +795,36 @@ public:
             double out_b;
 
             /** ensure saturated pixels stay saturated. **/
-            if (in_r >= kSaturated
+            /**
+            search key: super-saturated
+            currently there are no saturated pixels.
+            we've replaced them with a guess.
+            **/
+            /*if (in_r >= kSaturated
             &&  in_g >= kSaturated
             &&  in_b >= kSaturated) {
                 out_r = 65535.0;
                 out_g = 65535.0;
                 out_b = 65535.0;
-            } else {
+            } else*/ {
                 /** transform by matrix multiplication. **/
                 out_r = mat[0][0]*in_r + mat[0][1]*in_g + mat[0][2]*in_b;
                 out_g = mat[1][0]*in_r + mat[1][1]*in_g + mat[1][2]*in_b;
                 out_b = mat[2][0]*in_r + mat[2][1]*in_g + mat[2][2]*in_b;
 
                 /** ensure we don't change color on overflow. **/
-                int maxc = std::max(std::max(out_r, out_g), out_b);
+                /**
+                search key: super-saturated
+                currently there are no saturated pixels.
+                we've replaced them with a guess.
+                **/
+                /*int maxc = std::max(std::max(out_r, out_g), out_b);
                 if (maxc > 65535.0) {
                     double factor = 65535.0 / maxc;
                     out_r *= factor;
                     out_g *= factor;
                     out_b *= factor;
-                }
+                }*/
             }
 
             /** overwrite old values. **/
