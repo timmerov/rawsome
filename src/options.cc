@@ -67,6 +67,8 @@ bool comma_separated_doubles_2(
 }
 #endif
 
+/** we may want this again the future. **/
+#if 0
 bool comma_separated_ints_4(
     const char *s,
     int &a,
@@ -123,6 +125,7 @@ bool comma_separated_ints_4(
     }
     return true;
 }
+#endif
 
 void set_out_filename(
     Options &opt
@@ -187,12 +190,8 @@ bool Options::parse(
     auto_brightness_ = -1.0;
     linear_brightness_ = 0.0;
     color_enhancement_ = 0.0;
-    deblur_left_ = 0;
-    deblur_top_ = 0;
-    deblur_right_ = 0;
-    deblur_bottom_ = 0;
 
-    const char *options_short = "?i:o:n:d:W:ha:b:c:D:";
+    const char *options_short = "?i:o:n:d:W:ha:b:c:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
@@ -204,7 +203,6 @@ bool Options::parse(
         {'a', "auto-brightness"},
         {'b', "linear-brightness"},
         {'c', "color-enhancement"},
-        {'D', "deblur"},
         {0, nullptr}
     };
     CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -248,13 +246,6 @@ bool Options::parse(
         case 'c':
             color_enhancement_ = std::atof(clo.value_);
             break;
-        case 'D': {
-            bool good = comma_separated_ints_4(clo.value_, deblur_left_, deblur_top_, deblur_right_, deblur_bottom_);
-            if (good == false) {
-                return false;
-            }
-            break;
-        }
         }
     }
 
@@ -294,7 +285,4 @@ void Options::print_usage() {
     LOG("  -c --color-enhancement factor:");
     LOG("     convert to yuv. scale uv by factor. convert back to rgb.");
     LOG("     default 0.0.");
-    LOG("");
-    LOG("  -D --deblur t,l,b,r : deblur image. default 0,0,0,0");
-    LOG("     derive the blur kernel from the patch.");
 }
