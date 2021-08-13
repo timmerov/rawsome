@@ -198,8 +198,8 @@ bool Options::parse(
         {'h', "halfsize"},
         {'b', "black"},
         {'w', "white"},
-        {'a', "auto-black"},
-        {'A', "auto-white"},
+        {'B', "auto-black"},
+        {'W', "auto-white"},
         {'c', "color-enhancement"},
         {0, nullptr}
     };
@@ -232,10 +232,10 @@ bool Options::parse(
         case 'w':
             white_= std::atof(clo.value_);
             break;
-        case 'a':
+        case 'B':
             auto_black_= std::atof(clo.value_);
             break;
-        case 'A':
+        case 'W':
             auto_white_= std::atof(clo.value_);
             break;
         case 'c':
@@ -272,11 +272,11 @@ void Options::print_usage() {
     LOG("     set to -1.0 to disable. default -1.0");
     LOG("  -w --white level : sets the white level.");
     LOG("     set to -1.0 to disable. default -1.0");
-    LOG("  -A --auto-white fraction :");
-    LOG("     this fraction of the brightest pixels will be forced to full white.");
-    LOG("     set to -1.0 to disable. default -1.0");
-    LOG("  -a --auto-black fraction :");
+    LOG("  -B --auto-black fraction :");
     LOG("     this fraction of the darkest pixels will be forced to full black.");
+    LOG("     set to -1.0 to disable. default -1.0");
+    LOG("  -W --auto-white fraction :");
+    LOG("     this fraction of the brightest pixels will be forced to full white.");
     LOG("     set to -1.0 to disable. default -1.0");
     LOG("");
     LOG("  -c --color-enhancement factor:");
