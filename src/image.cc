@@ -137,6 +137,7 @@ void rotate_180(
             dst.set(wd - x - 1, ht - y - 1, p);
         }
     }
+    src = std::move(dst);
 }
 
 void rotate_270(
@@ -152,6 +153,7 @@ void rotate_270(
             dst.set(y, wd - x - 1, p);
         }
     }
+    src = std::move(dst);
 }
 
 void rotate(
