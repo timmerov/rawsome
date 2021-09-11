@@ -227,16 +227,16 @@ bool Options::parse(
             halfsize_ = true;
             break;
         case 'b':
-            black_= std::atof(clo.value_);
+            black_ = std::atof(clo.value_);
             break;
         case 'w':
-            white_= std::atof(clo.value_);
+            white_ = std::atof(clo.value_);
             break;
         case 'B':
-            auto_black_= std::atof(clo.value_);
+            auto_black_ = std::atof(clo.value_);
             break;
         case 'W':
-            auto_white_= std::atof(clo.value_);
+            auto_white_ = std::atof(clo.value_);
             break;
         case 'c':
             color_enhancement_ = std::atof(clo.value_);
