@@ -15,7 +15,7 @@ data structures for image processing.
 namespace {
 
 /** derived from dcraw. **/
-void gamma_curve(
+void display_gamma_curve(
     std::vector<int> &curve,
     double pwr,
     double ts,
@@ -49,6 +49,25 @@ void gamma_curve(
         if (r < 1) {
             curve[i] = 0x10000 * (r < g3 ? r*ts : std::pow(r,pwr)*(1+g4)-g4);
         }
+    }
+}
+
+void user_gamma_curve(
+    std::vector<int> &curve,
+    double pwr
+){
+    curve.resize(0x10000);
+
+    for (int i = 0; i < 0x10000; ++i) {
+        double in = double(i) / double(0x0FFFF);
+        double out = std::pow(in, pwr);
+        int x = int(out * double(0x0FFFF));
+        if (x < 0) {
+            x = 0;
+        } else if (x > 0x0FFFF) {
+            x = 0x0FFFF;
+        }
+        curve[i] = x;
     }
 }
 
@@ -409,17 +428,17 @@ void Plane::gaussian_horz_mt(
     th7.join();
 }
 
-void Plane::apply_gamma(
+void Plane::apply_display_gamma(
     double pwr,
     double ts,
     int white
 ) {
     std::vector<int> curve;
-    gamma_curve(curve, pwr, ts, white);
-    apply_gamma(curve);
+    display_gamma_curve(curve, pwr, ts, white);
+    apply_display_gamma(curve);
 }
 
-void Plane::apply_gamma(
+void Plane::apply_display_gamma(
     std::vector<int> &curve
 ) {
     int sz = width_ * height_;
@@ -542,16 +561,51 @@ void Planes::interpolate_1331() {
     b_.interpolate_1331();
 }
 
-void Planes::apply_gamma(
+void Planes::apply_user_gamma(
+    double pwr
+) {
+    /**
+    luminance_out = luminance_in ^ user_gamma
+    rgb_out = rgb_in * luminance_out / luminance_in
+    **/
+
+    /** precompute the power curve. **/
+    std::vector<int> curve;
+    user_gamma_curve(curve, pwr);
+
+    /** preserve luminance. **/
+    int sz = r_.width_ * r_.height_;
+    for (int i = 0; i < sz; ++i) {
+        double r = r_.samples_[i];
+        double g = g1_.samples_[i];
+        double b = b_.samples_[i];
+        /** convert srgb to luminance. **/
+        double lum_in = 0.2125*r + 0.7154*g + 0.0721*b;
+        int idx = int(lum_in);
+        if (idx < 0 || idx >= 0x10000) {
+            continue;
+        }
+        double lum_out = curve[idx];
+        double factor = lum_out / lum_in;
+        r *= factor;
+        g *= factor;
+        b *= factor;
+        r_.samples_[i] = r;
+        g1_.samples_[i] = g;
+        b_.samples_[i] = b;
+    }
+}
+
+void Planes::apply_display_gamma(
     double pwr,
     double ts,
     int white
 ) {
     std::vector<int> curve;
-    gamma_curve(curve, pwr, ts, white);
-    r_.apply_gamma(curve);
-    g1_.apply_gamma(curve);
-    b_.apply_gamma(curve);
+    display_gamma_curve(curve, pwr, ts, white);
+    r_.apply_display_gamma(curve);
+    g1_.apply_display_gamma(curve);
+    b_.apply_display_gamma(curve);
 }
 
 void Planes::scale_to_8bits() {

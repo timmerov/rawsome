@@ -160,7 +160,9 @@ public:
         show_special_pixel();
         enhance_colors();
         show_special_pixel();
-        apply_gamma();
+        apply_user_gamma();
+        show_special_pixel();
+        apply_display_gamma();
         show_special_pixel();
         scale_to_8bits();
         image_.save_png(opt_.out_filename_.c_str());
@@ -754,8 +756,20 @@ public:
         }
     }
 
-    void apply_gamma() {
-        LOG("applying gamma correction...");
+    void apply_user_gamma() {
+        LOG("applying user gamma...");
+
+        double pwr = opt_.gamma_;
+        if (pwr == 1.0) {
+            LOG("user gamma is disabled.");
+            return;
+        }
+
+        image_.planes_.apply_user_gamma(pwr);
+    }
+
+    void apply_display_gamma() {
+        LOG("applying gamma correction for displays...");
 
         /** use camera's gamma. **/
         double gamma0 = image_.camera_.gamma0_;
@@ -772,7 +786,7 @@ public:
         LOG("gamma correction: "<<ipwr<<" "<<ts);
 
         int white = 0x10000;
-        image_.planes_.apply_gamma(pwr, ts, white);
+        image_.planes_.apply_display_gamma(pwr, ts, white);
     }
 
     void scale_to_8bits() {

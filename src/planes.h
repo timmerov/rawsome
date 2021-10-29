@@ -57,9 +57,9 @@ public:
     void gaussian_horz(int n);
     void gaussian_horz_mt(int n);
 
-    /** apply gamma curve. **/
-    void apply_gamma(double pwr, double ts, int white);
-    void apply_gamma(std::vector<int> &curve);
+    /** apply gamma curve to compensate for non-linearity of displays/eyeballs. **/
+    void apply_display_gamma(double pwr, double ts, int white);
+    void apply_display_gamma(std::vector<int> &curve);
 
     /** scale to 8 bit values. **/
     void scale_to_8bits();
@@ -99,8 +99,11 @@ public:
     /** interpolate intermediate pixels. **/
     void interpolate_1331();
 
+    /** apply user gamma curve. **/
+    void apply_user_gamma(double pwr);
+
     /** apply gamma. **/
-    void apply_gamma(double pwr, double ts, int white);
+    void apply_display_gamma(double pwr, double ts, int white);
 
     /** scale to 8 bit values. **/
     void scale_to_8bits();

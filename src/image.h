@@ -51,6 +51,7 @@ public:
     double auto_brightness_ = -1.0;
     double linear_brightness_ = 0.0;
     double color_enhancement_ = 0.0;
+    double gamma_ = 1.0;
 };
 
 class Image {

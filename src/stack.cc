@@ -129,7 +129,7 @@ public:
         white_balance();
         combine_greens();
         convert_to_srgb();
-        apply_gamma();
+        apply_display_gamma();
         stack_.planes_.scale_to_8bits();
         stack_.save_png(kOutputFile);
 
@@ -579,11 +579,11 @@ public:
         }
     }
 
-    void apply_gamma() {
+    void apply_display_gamma() {
         double pwr = 1.0 / stack_.camera_.gamma0_;
         double ts = stack_.camera_.gamma1_;
         int white = 0x10000;
-        stack_.planes_.apply_gamma(pwr, ts, white);
+        stack_.planes_.apply_display_gamma(pwr, ts, white);
     }
 };
 }

@@ -189,8 +189,9 @@ bool Options::parse(
     auto_black_ = -1.0;
     auto_white_ = -1.0;
     color_enhancement_ = 0.0;
+    gamma_ = 1.0;
 
-    const char *options_short = "?i:o:hb:w:a:A:c:";
+    const char *options_short = "?i:o:hb:w:a:A:c:g:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
@@ -201,6 +202,7 @@ bool Options::parse(
         {'B', "auto-black"},
         {'W', "auto-white"},
         {'c', "color-enhancement"},
+        {'g', "gamma"},
         {0, nullptr}
     };
     CmdLineOptions clo(argc, argv, options_short, options_long);
@@ -241,6 +243,9 @@ bool Options::parse(
         case 'c':
             color_enhancement_ = std::atof(clo.value_);
             break;
+        case 'g':
+            gamma_ = std::atof(clo.value_);
+            break;
         }
     }
 
@@ -267,7 +272,7 @@ void Options::print_usage() {
     LOG("  -h --halfsize : disables demosaicing.");
     LOG("     the bayer block of RGGB is treated as a single pixel.");
     LOG("");
-    LOG("  pixels are linearly scaled between the black level and the whtie level.");
+    LOG("  pixels are linearly scaled between the black level and the white level.");
     LOG("  -b --black level : sets the black level.");
     LOG("     set to -1.0 to disable. default -1.0");
     LOG("  -w --white level : sets the white level.");
@@ -282,4 +287,9 @@ void Options::print_usage() {
     LOG("  -c --color-enhancement factor:");
     LOG("     convert to yuv. scale uv by factor. convert back to rgb.");
     LOG("     default 0.0.");
+    LOG("");
+    LOG("  -g --gamma factor:");
+    LOG("     scale luminance by the gamma exponent.");
+    LOG("     values less than 1.0 will make dark pixels brighter.");
+    LOG("     default 1.0.");
 }

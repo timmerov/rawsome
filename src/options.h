@@ -25,6 +25,7 @@ public:
     double auto_black_ = -1.0;
     double auto_white_ = -1.0;
     double color_enhancement_ = 0.0;
+    double gamma_ = 1.0;
 
     bool parse(int argc, clo_argv_t argv);
 
