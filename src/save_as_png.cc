@@ -155,6 +155,8 @@ public:
         interpolate();
         combine_greens();
         show_special_pixel();
+        auto_white_balance();
+        show_special_pixel();
         determine_black_and_white();
         convert_to_srgb();
         show_special_pixel();
@@ -409,7 +411,7 @@ public:
         LOG("interpolating pixels...");
 
         /** halfsize option disables demosaicing. **/
-        if (opt_.halfsize_) {
+        if (opt_.half_size_) {
             LOG("interpolation disabled by --halfsize option.");
             return;
         }
@@ -521,6 +523,37 @@ public:
         }
     }
 
+    void auto_white_balance() {
+        LOG("auto balancing white...");
+        if (opt_.auto_white_balance_ == false) {
+            LOG("auto balancing white is disabled.");
+            return;
+        }
+
+        int sz = image_.planes_.r_.width_ * image_.planes_.r_.height_;
+        std::int64_t energy_r = 0;
+        std::int64_t energy_g = 0;
+        std::int64_t energy_b = 0;
+        for (int i = 0; i < sz; ++i) {
+            energy_r += image_.planes_.r_.samples_[i];
+            energy_g += image_.planes_.g1_.samples_[i];
+            energy_b += image_.planes_.b_.samples_[i];
+        }
+
+        double energy = energy_r + energy_g + energy_b;
+        energy /= 3.0;
+        double factor_r = energy / double(energy_r);
+        double factor_g = energy / double(energy_g);
+        double factor_b = energy / double(energy_b);
+        LOG("factors: "<<factor_r<<" "<<factor_g<<" "<<factor_b);
+
+        for (int i = 0; i < sz; ++i) {
+            image_.planes_.r_.samples_[i]  *= factor_r;
+            image_.planes_.g1_.samples_[i] *= factor_g;
+            image_.planes_.b_.samples_[i]  *= factor_b;
+        }
+    }
+
     void determine_black_and_white() {
         LOG("determining black and white levels...");
 
@@ -546,7 +579,7 @@ public:
 
         /**
         find the brightest and darkest pixels.
-        guides the user if they
+        guides the user's non-auto choices.
         **/
         int cur_black = 0;
         int cur_white = 0;

@@ -19,7 +19,8 @@ public:
 
     std::string in_filename_;
     std::string out_filename_;
-    bool halfsize_ = false;
+    bool half_size_ = false;
+    bool auto_white_balance_ = false;
     double black_ = -1.0;
     double white_ = -1.0;
     double auto_black_ = -1.0;

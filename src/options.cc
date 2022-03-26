@@ -183,7 +183,8 @@ bool Options::parse(
     /** set default values for all options. **/
     in_filename_.clear();
     out_filename_.clear();
-    halfsize_ = false;
+    half_size_ = false;
+    auto_white_balance_ = false;
     black_ = -1.0;
     white_ = -1.0;
     auto_black_ = -1.0;
@@ -191,12 +192,13 @@ bool Options::parse(
     color_enhancement_ = 0.0;
     gamma_ = 1.0;
 
-    const char *options_short = "?i:o:hb:w:a:A:c:g:";
+    const char *options_short = "?i:o:hxb:w:B:W:c:g:";
     CmdLineOptions::LongFormat options_long[] = {
         {'?', "help"},
         {'i', "input"},
         {'o', "output"},
         {'h', "halfsize"},
+        {'x', "auto-white-balance"},
         {'b', "black"},
         {'w', "white"},
         {'B', "auto-black"},
@@ -226,7 +228,10 @@ bool Options::parse(
             out_filename_ = clo.value_;
             break;
         case 'h':
-            halfsize_ = true;
+            half_size_ = true;
+            break;
+        case 'x':
+            auto_white_balance_ = true;
             break;
         case 'b':
             black_ = std::atof(clo.value_);
