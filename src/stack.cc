@@ -29,12 +29,18 @@ const int kLastTag = 1253;*/
 const int kLastTag = 1251;*/
 
 /** first only **/
-const int kFirstTag = 1227;
-const int kLastTag = 1227;
+const int kFirstTag = 4117;
+const int kLastTag = 4126;
+//const int kLastTag = 4117;
+//const int kFirstTag = 1227;
+//const int kLastTag = 1227;
 
-const char *kInputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/IMG_";
-const char *kOutputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/stack.png";
-const char *kBlackFile = "/home/timmer/Pictures/2021-03-03/black/black.rsm";
+const char *kInputFile = "/home/timmer/Pictures/2022-03-29/stackable/IMG_";
+const char *kOutputFile = "/home/timmer/Pictures/2022-03-29/stackable/stack.png";
+const char *kBlackFile = "/home/timmer/Pictures/2022-03-29/stackable/black.rsm";
+//const char *kInputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/IMG_";
+//const char *kOutputFile = "/home/timmer/Pictures/2021-03-03/mars-pleiades/stack.png";
+//const char *kBlackFile = "/home/timmer/Pictures/2021-03-03/black/black.rsm";
 
 const int kNoiseFloor = 500;
 const int kMaxRegisterOffset = 300;
@@ -129,6 +135,7 @@ public:
         white_balance();
         combine_greens();
         convert_to_srgb();
+        apply_user_gamma();
         apply_display_gamma();
         stack_.planes_.scale_to_8bits();
         stack_.save_png(kOutputFile);
@@ -577,6 +584,10 @@ public:
             planes.g1_.samples_[i] = out_g;
             planes.b_.samples_[i] = out_b;
         }
+    }
+    void apply_user_gamma() {
+        double pwr = 0.6;
+        stack_.planes_.apply_user_gamma(pwr);
     }
 
     void apply_display_gamma() {
