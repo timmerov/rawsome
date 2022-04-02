@@ -23,8 +23,6 @@ public:
     std::string lens_;
     double gamma0_ = 0.0;
     double gamma1_ = 0.0;
-    double wb_r_ = 0.0;
-    double wb_b_ = 0.0;
     int iso_ = 0;
     double shutter_ = 0.0;
     double aperture_ = 0.0;

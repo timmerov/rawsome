@@ -309,17 +309,16 @@ void fix_bad_pixels(
 void CameraParams::print() {
     auto tm = std::localtime(&timestamp_);
 
-    LOG("make         : "<<make_);
-    LOG("model        : "<<model_);
-    LOG("lens         : "<<lens_);
-    LOG("gamma        : "<<gamma0_<<" "<<gamma1_);
-    LOG("white balance: R="<<wb_r_<<" B="<<wb_b_);
-    LOG("iso          : "<<iso_);
-    LOG("shutter      : "<<shutter_<<"s");
-    LOG("aperture     : f/"<<aperture_);
-    LOG("focal_len    : "<<focal_length_);
-    LOG("timestamp    : "<<std::put_time(tm, "%c %Z"));
-    LOG("temperature  : "<<temperature_);
+    LOG("make        : "<<make_);
+    LOG("model       : "<<model_);
+    LOG("lens        : "<<lens_);
+    LOG("gamma       : "<<gamma0_<<" "<<gamma1_);
+    LOG("iso         : "<<iso_);
+    LOG("shutter     : "<<shutter_<<"s");
+    LOG("aperture    : f/"<<aperture_);
+    LOG("focal_len   : "<<focal_length_);
+    LOG("timestamp   : "<<std::put_time(tm, "%c %Z"));
+    LOG("temperature : "<<temperature_);
 }
 
 void Image::load_raw(
@@ -349,13 +348,12 @@ void Image::load_raw(
     /**
     extract useful information from libraw.
     **/
-    double gamma0 = raw_image.imgdata.params.gamm[0];
-    double gamma1 = raw_image.imgdata.params.gamm[1];
-    gamma0 = 1.0 / gamma0;
-
     double white_balance_r = raw_image.imgdata.color.cam_mul[0];
     double white_balance_g = raw_image.imgdata.color.cam_mul[1];
     double white_balance_b = raw_image.imgdata.color.cam_mul[2];
+    double gamma0 = raw_image.imgdata.params.gamm[0];
+    double gamma1 = raw_image.imgdata.params.gamm[1];
+    gamma0 = 1.0 / gamma0;
 
     /**
     from libraw documentation:
@@ -388,8 +386,6 @@ void Image::load_raw(
     camera_.make_ = raw_image.imgdata.idata.make;
     camera_.gamma0_ = gamma0;
     camera_.gamma1_ = gamma1;
-    camera_.wb_r_ = white_balance_r / white_balance_g;
-    camera_.wb_b_ = white_balance_b / white_balance_g;
     camera_.iso_ = raw_image.imgdata.other.iso_speed;
     camera_.shutter_ = raw_image.imgdata.other.shutter;
     camera_.aperture_ = raw_image.imgdata.other.aperture;
@@ -420,6 +416,13 @@ void Image::load_raw(
     camera specific.
     **/
     fix_bad_pixels(planes_, noise_);
+
+    /** white balance **/
+    double wb_r = white_balance_r / white_balance_g;
+    double wb_b = white_balance_b / white_balance_g;
+    LOG("white balance r:"<<wb_r<<" b:"<<wb_b);
+    planes_.r_.multiply(wb_r);
+    planes_.b_.multiply(wb_b);
 
     rotate(planes_, rotation);
 

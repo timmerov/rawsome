@@ -17,11 +17,11 @@ register two source images.
 namespace {
 
 const int kFirstTag = 4154;
-const int kLastTag = 4261;
+const int kLastTag = 4156;
+//const int kLastTag = 4261;
 
 const char *kInputFile = "/home/timmer/Pictures/2022-04-01/stackable/IMG_";
 const char *kOutputFile = "/home/timmer/Pictures/2022-04-01/stackable/stack.png";
-const char *kBlackFile = "/home/timmer/Pictures/2022-04-01/black/black.rsm";
 
 const int kNoiseFloor = 500;
 const int kMaxRegisterOffset = 50;
@@ -41,7 +41,6 @@ public:
     StackImages() = default;
     ~StackImages() = default;
 
-    Image black_;
     RegisterImage cur_;
     RegisterImage stack_;
     Plane luminance_;
@@ -51,6 +50,18 @@ public:
     int dx_ = 0;
     int dy_ = 0;
 
+    /**
+    libraw gives us a maximum value=16383.
+    however, the actual saturation point is less than that.
+    it's around 13583.
+    but we will need to determine the exact values.
+    dump pixels into a histogram centered around 13583.
+    if there are no saturated pixels then we should have a long tail.
+    otherwise, there will be a spike at the end of the tail.
+    ie we need to find the thagomizer.
+    **/
+    const int kSaturation = 13583 - 2046; /** we need to subtract black. **/
+
     int run(
         int argc,
         clo_argv_t argv
@@ -59,9 +70,6 @@ public:
         (void) argv;
 
         LOG("stack images - work in progress.");
-
-        /** load the black file. **/
-        black_.load_rawsome(kBlackFile);
 
         /** load the first image. **/
         load_image(kFirstTag);
@@ -101,11 +109,20 @@ public:
             return 1;
         }
 
-        /** scale the brightness sums back to single image. **/
-        /** hack! blow up the brightness. **/
-        double brightness = 10.0;
-        double factor = brightness / double(count_);
+        LOG("stacked images:");
+        analyze_image4(stack_.image_);
+
+        /** scale the brightness sum. **/
+        /** this is the desired full scale. **/
+        double factor = 65535.0;
+        /** this is the single image max value. **/
+        factor /= double(kSaturation);
+        /** average the stacked images. **/
+        factor /= double(count_);
         stack_.image_.planes_.multiply4(factor);
+
+        LOG("stacked scaled:");
+        analyze_image4(stack_.image_);
 
         /** hack! remove more black. **/
         /*int sky_black = 5*256;
@@ -117,11 +134,22 @@ public:
         stack_.image_.planes_.subtract(pixel);*/
 
         /** save the stacked image. **/
-        white_balance();
         combine_greens();
+        LOG("stacked combine greens:");
+        analyze_image3(stack_.image_);
+
         convert_to_srgb();
+        LOG("stacked srgb:");
+        analyze_image3(stack_.image_);
+
         apply_user_gamma();
+        LOG("stacked user gamma:");
+        analyze_image3(stack_.image_);
+
         apply_display_gamma();
+        LOG("stacked display gamma:");
+        analyze_image3(stack_.image_);
+
         stack_.image_.planes_.scale_to_8bits();
         stack_.image_.save_png(kOutputFile);
 
@@ -139,20 +167,64 @@ public:
         if (cur_.image_.is_loaded_ == false) {
             return;
         }
-        subtract_black();
+        analyze_image4(cur_.image_);
         interpolate();
         compute_luminance(cur_.image_.planes_, luminance_);
     }
 
-    void subtract_black() {
-        LOG("subtracting black...");
-        int sz = cur_.image_.planes_.r_.width_ * cur_.image_.planes_.r_.height_;
+    void analyze_image4(
+        Image &image
+    ) {
+        analyze_plane("r ", image.planes_.r_);
+        analyze_plane("g1", image.planes_.g1_);
+        analyze_plane("g2", image.planes_.g2_);
+        analyze_plane("b ", image.planes_.b_);
+    }
+
+    void analyze_image3(
+        Image &image
+    ) {
+        analyze_plane("r", image.planes_.r_);
+        analyze_plane("g", image.planes_.g1_);
+        analyze_plane("b", image.planes_.b_);
+    }
+
+    void analyze_plane(
+        const char *tag,
+        Plane &plane
+    ) {
+        int min_s = 65536*256;
+        int max_s = -65536*256;
+        std::vector<int> histogram;
+        histogram.resize(256, 0);
+
+        int sz = plane.width_ * plane.height_;
         for (int i = 0; i < sz; ++i) {
-            cur_.image_.planes_.r_.samples_[i] -= black_.planes_.r_.samples_[i];
-            cur_.image_.planes_.g1_.samples_[i] -= black_.planes_.g1_.samples_[i];
-            cur_.image_.planes_.g2_.samples_[i] -= black_.planes_.g2_.samples_[i];
-            cur_.image_.planes_.b_.samples_[i] -= black_.planes_.b_.samples_[i];
+            int s = plane.samples_[i];
+            min_s = std::min(min_s, s);
+            max_s = std::max(max_s, s);
+
+            if (s < 0) {
+                s = 0;
+            }
+            s /= 256;
+            if (s >= 256) {
+                s = 255;
+            }
+            ++histogram[s];
         }
+        LOG("image:"<<tag<<": "<<min_s<<" "<<max_s);
+        std::stringstream ss;
+        for (int i = 0; i < 256; ++i) {
+            ss << " " << histogram[i];
+        }
+        LOG("hist:"<<ss.str());
+
+        int energy = 0;
+        for (int i = 0; i < 256; ++i) {
+            energy += i * histogram[i];
+        }
+        LOG("energy: "<<energy);
     }
 
     void interpolate() {
@@ -327,18 +399,6 @@ public:
         }
     }
 
-    void white_balance() {
-        RggbDouble cam_mul;
-        cam_mul.r_ = stack_.image_.camera_.wb_r_;
-        cam_mul.g1_ = 1.0;
-        cam_mul.g2_ = 1.0;
-        cam_mul.b_ = stack_.image_.camera_.wb_b_;
-        LOG("white balance: R="<<cam_mul.r_<<" B="<<cam_mul.b_);
-
-        /** white balance. **/
-        stack_.image_.planes_.multiply(cam_mul);
-    }
-
     void combine_greens() {
         auto& planes = stack_.image_.planes_;
         int sz = planes.g1_.width_ * planes.g1_.height_;
@@ -390,7 +450,7 @@ public:
     }
 
     void apply_user_gamma() {
-        double pwr = 0.6;
+        double pwr = 0.8;
         stack_.image_.planes_.apply_user_gamma(pwr);
     }
 

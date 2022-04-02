@@ -355,56 +355,10 @@ public:
 
     void scale_image() {
         LOG("scaling image...");
-        /**
-        combine three things:
-        1. subtract black
-        2. white balance
-        3. scale to full 32 bits.
-        **/
 
-        /**
-        normally, we would get the rggb camera multipliers from the raw_image.
-        note order permutation.
-        **/
-        RggbDouble cam_mul;
-        cam_mul.r_ = image_.camera_.wb_r_;
-        cam_mul.g1_ = 1.0;
-        cam_mul.g2_ = 1.0;
-        cam_mul.b_ = image_.camera_.wb_b_;
-
-        /** find the smallest multiplier. **/
-        double f = std::min(cam_mul.r_, cam_mul.g1_);
-        f = std::min(f, cam_mul.g2_);
-        f = std::min(f, cam_mul.b_);
-
-        /** scale so smallest is 1.0 **/
-        cam_mul.r_ /= f;
-        cam_mul.g1_ /= f;
-        cam_mul.g2_ /= f;
-        cam_mul.b_ /= f;
-        //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
-        LOG("white balance R="<<cam_mul.r_<<" B="<<cam_mul.b_);
-
-        /**
-        adjust so fully saturated scales to 1.0 when cam_mul is 1.0.
-        (16383 - black) * cam_mul_new = 1.0 = cam_mul_org
-        cam_mul_new = cam_mul_org / (16383 - black)
-        **/
-        cam_mul.r_ /= kSaturation;
-        cam_mul.g1_ /= kSaturation;
-        cam_mul.g2_ /= kSaturation;
-        cam_mul.b_ /= kSaturation;
-        //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
-
-        /** adjust to span full 16 bit range. **/
-        cam_mul.r_ *= 65535.0;
-        cam_mul.g1_ *= 65535.0;
-        cam_mul.g2_ *= 65535.0;
-        cam_mul.b_ *= 65535.0;
-        //LOG("cam_mul="<<cam_mul.r_<<" "<<cam_mul.g1_<<" "<<cam_mul.g2_<<" "<<cam_mul.b_);
-
-        /** white balance. **/
-        image_.planes_.multiply(cam_mul);
+        /** scale to full 32 bits. **/
+        double factor = 65535.0 / kSaturation;
+        image_.planes_.multiply4(factor);
     }
 
     void interpolate() {
