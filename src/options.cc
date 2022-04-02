@@ -254,6 +254,17 @@ bool Options::parse(
         }
     }
 
+    LOG("clo.arg_index_="<<clo.arg_index_);
+    int i = clo.arg_index_;
+    for(;;) {
+        auto arg = argv[i];
+        if (arg == nullptr) {
+            break;
+        }
+        LOG("arg["<<i<<"]=\""<<arg<<"\"");
+        ++i;
+    }
+
     if (in_filename_.empty()) {
         return false;
     }
