@@ -17,8 +17,8 @@ register two source images.
 namespace {
 
 const int kFirstTag = 4154;
-const int kLastTag = 4156;
-//const int kLastTag = 4261;
+//const int kLastTag = 4156;
+const int kLastTag = 4261;
 
 const char *kInputFile = "/home/timmer/Pictures/2022-04-01/stackable/IMG_";
 const char *kOutputFile = "/home/timmer/Pictures/2022-04-01/stackable/stack.png";
@@ -138,12 +138,12 @@ public:
         LOG("stacked combine greens:");
         analyze_image3(stack_.image_);
 
-        convert_to_srgb();
-        LOG("stacked srgb:");
-        analyze_image3(stack_.image_);
-
         apply_user_gamma();
         LOG("stacked user gamma:");
+        analyze_image3(stack_.image_);
+
+        convert_to_srgb();
+        LOG("stacked srgb:");
         analyze_image3(stack_.image_);
 
         apply_display_gamma();
@@ -450,7 +450,7 @@ public:
     }
 
     void apply_user_gamma() {
-        double pwr = 0.8;
+        double pwr = 0.6;
         stack_.image_.planes_.apply_user_gamma(pwr);
     }
 
