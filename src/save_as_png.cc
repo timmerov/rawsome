@@ -158,11 +158,11 @@ public:
         auto_white_balance();
         show_special_pixel();
         determine_black_and_white();
-        convert_to_srgb();
-        show_special_pixel();
         enhance_colors();
         show_special_pixel();
         apply_user_gamma();
+        show_special_pixel();
+        convert_to_srgb();
         show_special_pixel();
         apply_display_gamma();
         show_special_pixel();
@@ -265,6 +265,16 @@ public:
             }
         }
 
+
+#if 0
+        {
+            std::stringstream ss;
+            for (int i = 0; i < kSatSize; ++i) {
+                ss<<" "<<histogram_[i];
+            }
+            LOG("saturation histogram:"<<ss.str());
+        }
+#endif
         /** for very black pictures, use the expected value. **/
         if (saturation < 12) {
             LOG("saturation: "<<kSaturation<<" (default)");
@@ -708,10 +718,6 @@ public:
             int in_g = image_.planes_.g1_.samples_[i];
             int in_b = image_.planes_.b_.samples_[i];
 
-            double out_r;
-            double out_g;
-            double out_b;
-
             /** transform to yuv. **/
             double y = +0.257*in_r + 0.504*in_g + 0.098*in_b;
             double u = -0.148*in_r - 0.291*in_g + 0.439*in_b;
@@ -723,12 +729,12 @@ public:
             v *= factor;
 
             /** transform back to rgb. **/
-            out_r = y + 1.596*v;
-            out_g = y - 0.392*u - 0.813*v;
-            out_b = y + 2.017*u;
+            double out_r = y + 1.596*v;
+            double out_g = y - 0.392*u - 0.813*v;
+            double out_b = y + 2.017*u;
 
             /** ensure we don't change color on overflow. **/
-            int maxc = std::max(std::max(out_r, out_g), out_b);
+            double maxc = std::max(std::max(out_r, out_g), out_b);
             if (maxc > 65535.0) {
                 double factor = 65535.0 / maxc;
                 out_r *= factor;

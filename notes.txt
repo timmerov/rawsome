@@ -1,0 +1,67 @@
+
+processing order:
+
+1. load raw pixels
+
+2. subtract black
+
+3. fix bad pixels
+note: this must be done with canon bayer rgb pixels.
+but the algorithm fixes linear rgb pixels.
+
+4. hard-coded camera white balance
+note: it's not clear we should do this.
+
+we are now using a linear color space.
+
+5. desaturate pixels
+note: need to move this to before the hard coded white balance.
+cause red and blue multipliers are around 2.5 and 1.5.
+so the saturation point depends on color component.
+oops.
+
+6. scale to full 32 bits.
+
+7. demosaic
+
+8. combine greens
+
+apply user tweaks.
+
+9. auto white balance
+
+10. user black and white
+
+11. enhance colors
+
+12. user gamma
+
+
+convert to display.
+
+13. srgb
+note: srgb is a misnomer.
+srgb here means convert from canon bayer rgb space to linear rgb space.
+srgb actually means to apply the display gamma.
+
+14. display gamma
+
+15. convert to 8 bit.
+
+
+proposed order:
+
+1. load raw pixels.
+2. subtract black.
+3. fix bad pixels.
+4. desaturate pixels.
+5. linear rgb.
+6. scale to full 32 bits.
+7. demosaic.
+8. combine greens.
+9. auto white balance.
+10. user black and white.
+11. enhance colors.
+12. user gamma.
+13. display gamma.
+14. convert to 8 bit.

@@ -186,7 +186,7 @@ void rotate(
 }
 
 void fix_bad_pixels(
-    Planes & planes,
+    Planes &planes,
     int noise
 ) {
     LOG("fixing bad pixels...");
