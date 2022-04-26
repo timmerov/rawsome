@@ -16,12 +16,11 @@ register two source images.
 
 namespace {
 
-const int kFirstTag = 4154;
-//const int kLastTag = 4156;
-const int kLastTag = 4261;
+const int kFirstTag = 4379;
+const int kLastTag = 4449;
 
-const char *kInputFile = "/home/timmer/Pictures/2022-04-01/stackable/IMG_";
-const char *kOutputFile = "/home/timmer/Pictures/2022-04-01/stackable/stack.png";
+const char *kInputFile = "/home/timmer/Pictures/2022-04-25/IMG_";
+const char *kOutputFile = "/home/timmer/Pictures/2022-04-25/stack.png";
 
 const int kNoiseFloor = 500;
 const int kMaxRegisterOffset = 50;
@@ -110,7 +109,7 @@ public:
         }
 
         LOG("stacked images:");
-        analyze_image4(stack_.image_);
+        //analyze_image4(stack_.image_);
 
         /** scale the brightness sum. **/
         /** this is the desired full scale. **/
@@ -122,7 +121,7 @@ public:
         stack_.image_.planes_.multiply4(factor);
 
         LOG("stacked scaled:");
-        analyze_image4(stack_.image_);
+        //analyze_image4(stack_.image_);
 
         /** hack! remove more black. **/
         /*int sky_black = 5*256;
@@ -136,19 +135,19 @@ public:
         /** save the stacked image. **/
         combine_greens();
         LOG("stacked combine greens:");
-        analyze_image3(stack_.image_);
+        //analyze_image3(stack_.image_);
 
         apply_user_gamma();
         LOG("stacked user gamma:");
-        analyze_image3(stack_.image_);
+        //analyze_image3(stack_.image_);
 
         convert_to_srgb();
         LOG("stacked srgb:");
-        analyze_image3(stack_.image_);
+        //analyze_image3(stack_.image_);
 
         apply_display_gamma();
         LOG("stacked display gamma:");
-        analyze_image3(stack_.image_);
+        //analyze_image3(stack_.image_);
 
         stack_.image_.planes_.scale_to_8bits();
         stack_.image_.save_png(kOutputFile);
@@ -167,7 +166,7 @@ public:
         if (cur_.image_.is_loaded_ == false) {
             return;
         }
-        analyze_image4(cur_.image_);
+        //analyze_image4(cur_.image_);
         interpolate();
         compute_luminance(cur_.image_.planes_, luminance_);
     }
