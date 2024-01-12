@@ -28,7 +28,7 @@ public:
     double aperture_ = 0.0;
     double focal_length_ = 0.0;
     std::time_t timestamp_ = 0;
-    double temperature_ = 0.0;
+    double balance_[4];
 
     void print();
 };

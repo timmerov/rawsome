@@ -318,7 +318,7 @@ void CameraParams::print() {
     LOG("aperture    : f/"<<aperture_);
     LOG("focal_len   : "<<focal_length_);
     LOG("timestamp   : "<<std::put_time(tm, "%c %Z"));
-    LOG("temperature : "<<temperature_);
+    LOG("balance     : "<<balance_[0]<<" "<<balance_[1]<<" "<<balance_[2]<<" "<<balance_[3]);
 }
 
 void Image::load_raw(
@@ -391,7 +391,9 @@ void Image::load_raw(
     camera_.aperture_ = raw_image.imgdata.other.aperture;
     camera_.focal_length_ = raw_image.imgdata.other.focal_len;
     camera_.timestamp_ = raw_image.imgdata.other.timestamp;
-    camera_.temperature_ = raw_image.imgdata.other.CameraTemperature;
+    for (int i = 0; i < 4; ++i) {
+        camera_.balance_[i] = raw_image.imgdata.other.analogbalance[i];
+    }
 
     LOG("flip="<<raw_image.imgdata.sizes.flip);
 

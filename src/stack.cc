@@ -16,14 +16,17 @@ register two source images.
 
 namespace {
 
-const int kFirstTag = 4379;
-const int kLastTag = 4449;
+const int kFirstTag = 4710;
+const int kLastTag = 4714;
 
-const char *kInputFile = "/home/timmer/Pictures/2022-04-25/IMG_";
-const char *kOutputFile = "/home/timmer/Pictures/2022-04-25/stack.png";
+const char *kInputFile = "/home/timmer/Pictures/2022-07-18-milky-way-comet/IMG_";
+const char *kOutputFile = "/home/timmer/Pictures/2022-07-18-milky-way-comet/stack.png";
 
 const int kNoiseFloor = 500;
 const int kMaxRegisterOffset = 50;
+
+const int kSkyBlack = 0; //5*256;
+const double kUserGamma = 0.6;
 
 class RegisterImage {
 public:
@@ -124,20 +127,20 @@ public:
         //analyze_image4(stack_.image_);
 
         /** hack! remove more black. **/
-        /*int sky_black = 5*256;
         RggbPixel pixel;
-        pixel.r_ = sky_black;
-        pixel.g1_ = sky_black;
-        pixel.g2_ = sky_black;
-        pixel.b_ = sky_black;
-        stack_.image_.planes_.subtract(pixel);*/
+        pixel.r_ = kSkyBlack;
+        pixel.g1_ = kSkyBlack;
+        pixel.g2_ = kSkyBlack;
+        pixel.b_ = kSkyBlack;
+        stack_.image_.planes_.subtract(pixel);
 
         /** save the stacked image. **/
         combine_greens();
         LOG("stacked combine greens:");
         //analyze_image3(stack_.image_);
 
-        apply_user_gamma();
+        /** apply user gamma **/
+        stack_.image_.planes_.apply_user_gamma(kUserGamma);
         LOG("stacked user gamma:");
         //analyze_image3(stack_.image_);
 
@@ -446,11 +449,6 @@ public:
             planes.g1_.samples_[i] = out_g;
             planes.b_.samples_[i] = out_b;
         }
-    }
-
-    void apply_user_gamma() {
-        double pwr = 0.6;
-        stack_.image_.planes_.apply_user_gamma(pwr);
     }
 
     void apply_display_gamma() {

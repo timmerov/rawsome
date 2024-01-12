@@ -59,10 +59,10 @@ void dump(
         }
     }
     LOG(prefix<<".mask=[ "<<ss.str()<<"]");
-    LOG(prefix<<".raw_crop.cleft="<<sizes.raw_crop.cleft);
-    LOG(prefix<<".raw_crop.ctop="<<sizes.raw_crop.ctop);
-    LOG(prefix<<".raw_crop.cwidth="<<sizes.raw_crop.cwidth);
-    LOG(prefix<<".raw_crop.cheight="<<sizes.raw_crop.cheight);
+    LOG(prefix<<".raw_inset_crop.cleft="<<sizes.raw_inset_crop.cleft);
+    LOG(prefix<<".raw_inset_crop.ctop="<<sizes.raw_inset_crop.ctop);
+    LOG(prefix<<".raw_inset_crop.cwidth="<<sizes.raw_inset_crop.cwidth);
+    LOG(prefix<<".raw_inset_crop.cheight="<<sizes.raw_inset_crop.cheight);
 }
 
 void dump(
@@ -152,11 +152,11 @@ void dump(
     LOG(prefix<<".LensSerial="<<quote_or_null(lens.LensSerial));
     LOG(prefix<<".InternalLensSerial="<<quote_or_null(lens.InternalLensSerial));
     LOG(prefix<<".FocalLengthIn35mmFormat="<<lens.FocalLengthIn35mmFormat);
-    LOG(prefix<<".nikon.NikonEffectiveMaxAp="<<lens.nikon.NikonEffectiveMaxAp);
-    LOG(prefix<<".nikon.NikonLensIDNumber="<<(int)lens.nikon.NikonLensIDNumber);
-    LOG(prefix<<".nikon.NikonLensFStops="<<(int)lens.nikon.NikonLensFStops);
-    LOG(prefix<<".nikon.NikonMCUVersion="<<(int)lens.nikon.NikonMCUVersion);
-    LOG(prefix<<".nikon.NikonLensType="<<(int)lens.nikon.NikonLensType);
+    LOG(prefix<<".nikon.EffectiveMaxAp="<<lens.nikon.EffectiveMaxAp);
+    LOG(prefix<<".nikon.LensIDNumber="<<(int)lens.nikon.LensIDNumber);
+    LOG(prefix<<".nikon.LensFStops="<<(int)lens.nikon.LensFStops);
+    LOG(prefix<<".nikon.MCUVersion="<<(int)lens.nikon.MCUVersion);
+    LOG(prefix<<".nikon.LensType="<<(int)lens.nikon.LensType);
     LOG(prefix<<".dng.MinFocal="<<(int)lens.dng.MinFocal);
     LOG(prefix<<".dng.MaxFocal="<<(int)lens.dng.MaxFocal);
     LOG(prefix<<".dng.MaxAp4MinFocal="<<(int)lens.dng.MaxAp4MinFocal);
@@ -616,7 +616,7 @@ void dump(
     dump(prefix+".dng_color[0]", color.dng_color[0]);
     dump(prefix+".dng_color[1]", color.dng_color[1]);
     dump(prefix+".dng_levels", color.dng_levels);
-    LOG(prefix<<".baseline_exposure="<<color.baseline_exposure);
+    //LOG(prefix<<".baseline_exposure="<<color.baseline_exposure);
     ss.clear();
     ss.str(std::string());
     for (int i = 0; i < 256; ++i) {
@@ -650,12 +650,12 @@ void dump(
         ss<<parsed_gps.latitude[i]<<" ";
     }
     LOG(prefix<<".latitude=[ "<<ss.str()<<"]");
-    ss.clear();
+    /*ss.clear();
     ss.str(std::string());
     for (int i = 0; i < 3; ++i) {
         ss<<parsed_gps.longtitude[i]<<" ";
     }
-    LOG(prefix<<".longtitude=[ "<<ss.str()<<"]");
+    LOG(prefix<<".longtitude=[ "<<ss.str()<<"]");*/
     ss.clear();
     ss.str(std::string());
     for (int i = 0; i < 3; ++i) {
@@ -717,21 +717,21 @@ void dump(
     dump(prefix+".parsed_gps", other.parsed_gps);
     LOG(prefix<<".desc="<<quote_or_null(other.desc));
     LOG(prefix<<".artist="<<quote_or_null(other.artist));
-    LOG(prefix<<".FlashEC="<<other.FlashEC);
-    LOG(prefix<<".FlashGN="<<other.FlashGN);
-    LOG(prefix<<".CameraTemperature="<<other.CameraTemperature);
-    LOG(prefix<<".SensorTemperature="<<other.SensorTemperature);
-    LOG(prefix<<".SensorTemperature2="<<other.SensorTemperature2);
-    LOG(prefix<<".LensTemperature="<<other.LensTemperature);
-    LOG(prefix<<".AmbientTemperature="<<other.AmbientTemperature);
-    LOG(prefix<<".BatteryTemperature="<<other.BatteryTemperature);
-    LOG(prefix<<".exifAmbientTemperature="<<other.exifAmbientTemperature);
-    LOG(prefix<<".exifHumidity="<<other.exifHumidity);
-    LOG(prefix<<".exifPressure="<<other.exifPressure);
-    LOG(prefix<<".exifWaterDepth="<<other.exifWaterDepth);
-    LOG(prefix<<".exifAcceleration="<<other.exifAcceleration);
-    LOG(prefix<<".exifCameraElevationAngle="<<other.exifCameraElevationAngle);
-    LOG(prefix<<".real_ISO="<<other.real_ISO);
+    //LOG(prefix<<".FlashEC="<<other.FlashEC);
+    //LOG(prefix<<".FlashGN="<<other.FlashGN);
+    //LOG(prefix<<".CameraTemperature="<<other.CameraTemperature);
+    //LOG(prefix<<".SensorTemperature="<<other.SensorTemperature);
+    //LOG(prefix<<".SensorTemperature2="<<other.SensorTemperature2);
+    //LOG(prefix<<".LensTemperature="<<other.LensTemperature);
+    //LOG(prefix<<".AmbientTemperature="<<other.AmbientTemperature);
+    //LOG(prefix<<".BatteryTemperature="<<other.BatteryTemperature);
+    //LOG(prefix<<".exifAmbientTemperature="<<other.exifAmbientTemperature);
+    //LOG(prefix<<".exifHumidity="<<other.exifHumidity);
+    //LOG(prefix<<".exifPressure="<<other.exifPressure);
+    //LOG(prefix<<".exifWaterDepth="<<other.exifWaterDepth);
+    //LOG(prefix<<".exifAcceleration="<<other.exifAcceleration);
+    //LOG(prefix<<".exifCameraElevationAngle="<<other.exifCameraElevationAngle);
+    //LOG(prefix<<".real_ISO="<<other.real_ISO);
 }
 
 void dump(
