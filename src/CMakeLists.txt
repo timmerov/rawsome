@@ -22,7 +22,7 @@ add_executable(${THIS_TARGET_NAME} ${THIS_SOURCE} ${THIS_HEADERS})
 # add _d to the debug target name
 set_target_properties(${THIS_TARGET_NAME} PROPERTIES DEBUG_POSTFIX _d)
 
-# add _d to the debug target name
+# put the executable in the bin directory
 set_target_properties(${THIS_TARGET_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
 )
